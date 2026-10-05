@@ -301,6 +301,11 @@
   /* a note under a colour grid, saying what the letters and the axis are */
   .grid-key { margin: 2px 0 10px; color: var(--dim); font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .grid-key b { color: var(--text); }
+  /* the BASE_CREAM ladder: one row per step, with its own labels on the row head */
+  .cgrid.cram th { text-align: left; }
+  .cgrid.cram th i { display: block; font-style: normal; color: var(--dim2); font-size: 9px; text-transform: none; }
+  .cgrid.cram th.corner { text-align: right; text-transform: none; }
+  .cgrid.cram td { min-width: 52px; text-align: center; }
   .grid-note { margin: 0 0 12px; color: var(--dim); font-size: 12px; }
   .m-legend { margin: 12px 0 0; color: var(--dim); font-size: 12px; }
   .m-legend ul { margin: 6px 0 0; padding-left: 18px; }
@@ -503,13 +508,12 @@ function baseColours(red, green, brown) {
 }
 const mod4 = n => ((n % 4) + 4) % 4;
 
-/* What the three swatches of a coat cell are, in the order they are drawn. */
+/* What the two swatches of a coat cell are, in the order they are drawn. */
 const coatKeyHtml = () =>
   `<p class="grid-key">Each cell: <span class="ctrio">` +
-  `<span class="csw"><i>l</i><b style="background:#8a8a8a"></b></span>` +
   `<span class="csw"><i>b</i><b style="background:#8a8a8a"></b></span>` +
   `<span class="csw"><i>s</i><b style="background:#8a8a8a"></b></span>` +
-  `</span> = <b>l</b>ight, <b>b</b>ase and <b>s</b>pot colour. Hover a cell for the three shades.</p>`;
+  `</span> = <b>b</b>ase coat colour and <b>s</b>pot colour, with BASE_CREAM stepping the base one shade either side. Hover a cell for both.</p>`;
 
 /* A grid of colour swatches: rows x cols, each cell built by cellHtml(value, r, c).
    `marked(r, c)` outlines the cell the gene's own values can produce. */
@@ -548,13 +552,17 @@ function skinGridHtml(gene) {
 /* The coat: two grids, because BASE_BROWN only matters while BASE_GREEN is 0 (colors.js:112-128,
    every green branch decides on its own and ignores brown). The BASE_BROWN table therefore holds
    red and green at 0, and the RED/GREEN table holds brown at its default.
-   Each cell is the three colours the coat chooses between, in the order BASE_CREAM walks them
-   (colors.js:158-162): the lighter step, the base, the spot. The letters under the swatches say
-   which is which, and the cell's tooltip spells the three out. */
+   Each cell carries the base coat colour and the spot colour, and the cell tooltip spells both out.
+   The base swatch is the BASE_CREAM 0 shade, the darkest of the three steps BASE_CREAM chooses
+   between; the two lighter steps are listed in the BASE_CREAM table. */
+const CREAM_STEPS = [
+  { key: 'base', text: 'above 0.66' },
+  { key: 'mid', text: '0.33 to 0.66' },
+  { key: 'dark', text: '0.33 and below' },
+];
 const COAT_TRIO = col =>
-  `<span class="ctrio" title="light ${col.mid}  |  base ${col.base}  |  spot ${col.spot}">` +
-  `<span class="csw"><i>l</i><b style="background:${col.mid}"></b></span>` +
-  `<span class="csw"><i>b</i><b style="background:${col.base}"></b></span>` +
+  `<span class="ctrio" title="base ${col.dark}  |  spot ${col.spot}">` +
+  `<span class="csw"><i>b</i><b style="background:${col.dark}"></b></span>` +
   `<span class="csw"><i>s</i><b style="background:${col.spot}"></b></span>` +
   `</span>`;
 
@@ -562,7 +570,7 @@ function baseBrownGridHtml(gene) {
   const a = [0, 1, 2, 3];
   const reach = new Set(a.map(k => mod4(+gvOf(gene, k))));
   return colourGrid(
-    'Coat colours for BASE_BROWN, with BASE_RED and BASE_GREEN at 0',
+    'Coat colours for BASE_BROWN, with BASE_RED and BASE_GREEN at 0 (each cell at BASE_CREAM 0)',
     'BASE_GREEN', 'BASE_BROWN',
     a, a,
     (green, brown) => COAT_TRIO(baseColours(0, green, brown)),
@@ -574,7 +582,7 @@ function baseRedGreenGridHtml(gene) {
   const a = [0, 1, 2, 3];
   const reach = new Set(a.map(k => mod4(+gvOf(gene, k))));
   return colourGrid(
-    'Coat colours for BASE_GREEN and BASE_RED, with BASE_BROWN at 0',
+    'Coat colours for BASE_GREEN and BASE_RED, with BASE_BROWN at 0 (each cell at BASE_CREAM 0)',
     'BASE_RED', 'BASE_GREEN',
     a, a,
     (red, green) => (red === 0 && green === 0)
@@ -583,6 +591,28 @@ function baseRedGreenGridHtml(gene) {
     (red, green) => gene.n === 'BASE_RED' ? reach.has(red)
       : gene.n === 'BASE_GREEN' ? reach.has(green) : true
   );
+}
+
+/* BASE_CREAM on its own: the same coat colour at each of the three steps the gene chooses between.
+   The ladder is colors.js:158-162; the gene's own values (0, 1, 0, 0 over s 100) only ever reach
+   the lowest step, and its dominance of 50 means a heterozygote blends to 0 or 1 as well. */
+function creamGridHtml(gene) {
+  const a = [0, 1, 2, 3];
+  const reach = new Set(a.map(k => +gvOf(gene, k)));
+  let html = '<table class="cgrid cram">';
+  html += '<tr><th class="corner">BASE_CREAM &darr;<br>colour &rarr;</th>' +
+    '<th>Lighter step</th><th>The base colour</th><th>Spot colour</th></tr>';
+  for (const step of CREAM_STEPS) {
+    const col = baseColours(0, 0, 0);
+    /* the step's own colour, and the two the ladder picks between around it */
+    const sw = (hex, letter) => `<span class="csw"><i>${letter}</i><b style="background:${hex}"></b></span>`;
+    /* does this gene's own four alleles ever reach this step of the ladder? */
+    const hit = [...reach].some(v =>
+      step.key === 'base' ? v > 0.66 : step.key === 'mid' ? (v > 0.33 && v <= 0.66) : v <= 0.33);
+    html += `<tr class="${hit ? 'hit' : ''}"><th>${step.text}<i>${step.key}</i></th>` +
+      `<td>${sw(col.mid, 'l')}</td><td>${sw(col[step.key], 'b')}</td><td>${sw(col.spot, 's')}</td></tr>`;
+  }
+  return html + '</table>';
 }
 function gvOf(g, allele) { return g.g[allele] / (g.s || 1); }
 
@@ -818,11 +848,14 @@ function openMatrix(i, push, markAllele) {
   } else if (g.n === 'BASE_BROWN') {
     gridHost.innerHTML = baseBrownGridHtml(g) +
       coatKeyHtml() +
-      `<p class="grid-note">BASE_BROWN only changes the coat while BASE_GREEN is 0: every green branch of the colour code decides on its own and never looks at brown (colors.js:112-128). This table is therefore brown against green with BASE_RED at 0, and each cell is the three coat colours BASE_CREAM then chooses between.</p>`;
+      `<p class="grid-note">BASE_BROWN only changes the coat while BASE_GREEN is 0: every green branch of the colour code decides on its own and never looks at brown (colors.js:112-128). This table is therefore brown against green with BASE_RED at 0, and each cell is the coat at BASE_CREAM 0.</p>`;
   } else if (g.n === 'BASE_RED' || g.n === 'BASE_GREEN') {
     gridHost.innerHTML = baseRedGreenGridHtml(g) +
       coatKeyHtml() +
-      `<p class="grid-note">BASE_GREEN and BASE_RED pick the coat between them, with BASE_CREAM choosing which of the three colours in a cell is used. The corner where both are 0 is the brown side of the code, so it is left empty and shown in the BASE_BROWN table instead. To see brown's own effect, open BASE_BROWN.</p>`;
+      `<p class="grid-note">BASE_GREEN and BASE_RED pick the coat between them. The corner where both are 0 is the brown side of the code, so it is left empty and shown in the BASE_BROWN table instead. To see brown's own effect, open BASE_BROWN.</p>`;
+  } else if (g.n === 'BASE_CREAM') {
+    gridHost.innerHTML = creamGridHtml(g) +
+      `<p class="grid-note">BASE_CREAM does not change the hue: it picks which of three shades of the same coat colour is used for the base. Above 0.66 the lightest stands, 0.33 to 0.66 the middle one, and below that the darkest, which is the shade the other coat tables show (colors.js:158-162).</p>`;
   } else {
     gridHost.innerHTML = '';
   }
