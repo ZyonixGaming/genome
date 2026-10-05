@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Every Horsey Game gene: helix H and position P, dominance m, scale s, its four bases with values g0-g3, and what each gene does.">
+<title>Horsey Game Genome Table - H, P, m, s, bases and effects</title>
+<link rel="icon" type="image/x-icon" href="../../shared/ico/dna.ico">
+<style>
+  /* ------------------------------------------------------------------
+     Horsey Game Genome Table - standalone, no dependencies. The gene data is built into the page
+     from genes.xml together with each gene's helix and position. Regenerate the DATA block at the
+     bottom of this file if genes.xml changes; the value names and the descriptions have their own
+     builders and checks under tools/.
+     ------------------------------------------------------------------ */
+  :root {
+    --bg: #0f1720;
+    --panel: #16202a;
+    --panel2: #1c2836;
+    --line: #2d3a46;
+    --line2: #223040;
+    --text: #dce6f0;
+    --dim: #93a4b5;
+    --dim2: #6b7c8d;
+    --accent: #4fb3ff;
+    --accent2: #7ee787;
+    --warn: #ffb454;
+    --thead-h: 42px;
+    --group-h: 26px;
+    --helix-w: 46px;
+    /* the width cap shared by the header, the table and the legend */
+    --table-max: 1680px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  /* The page itself never scrolls: only the table does. The header, the table and the legend are
+     three stacked blocks of one fixed-height column, all cut to the same width. */
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 "Segoe UI", Roboto, system-ui, -apple-system, sans-serif;
+    max-width: var(--table-max); margin: 0 auto;
+    display: flex; flex-direction: column;
+  }
+  a { color: var(--accent); }
+
+  header.top {
+    flex: 0 0 auto; z-index: 40;
+    background: linear-gradient(180deg, #1b2836, #131e28);
+    border-bottom: 1px solid var(--line);
+    border-left: 1px solid var(--line2); border-right: 1px solid var(--line2);
+    padding: 10px 16px 12px;
+  }
+  .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+  h1 .dna { margin-right: 6px; }
+
+  .controls { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+  .search-wrap { position: relative; flex: 1 1 320px; max-width: 460px; }
+  .search-wrap svg { position: absolute; left: 9px; top: 8px; opacity: .5; }
+  #search {
+    width: 100%; padding: 7px 30px 7px 30px;
+    background: #0d151d; border: 1px solid var(--line); border-radius: 6px;
+    color: var(--text); font: inherit; font-size: 13.5px;
+  }
+  #search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,179,255,.15); }
+  #clearSearch {
+    position: absolute; right: 6px; top: 5px; display: none;
+    background: none; border: 0; color: var(--dim); font-size: 15px; cursor: pointer; padding: 2px 5px;
+  }
+  #clearSearch:hover { color: var(--text); }
+  .count { color: var(--dim); font-size: 12.5px; white-space: nowrap; }
+  .count b { color: var(--text); font-weight: 600; }
+  button.btn {
+    background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 6px 10px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  button.btn:hover { border-color: var(--accent); color: #fff; }
+
+  /* ------------------------------- table ------------------------------- */
+  /* The table is the only thing on the page that scrolls, sideways and down. It fills whatever
+     height is left between the header and the legend. Column widths are set by dragging a header
+     edge (see the resize handler). */
+  .table-wrap {
+    flex: 1 1 auto; min-height: 0;
+    overflow: auto;
+    border-left: 1px solid var(--line2); border-right: 1px solid var(--line2);
+  }
+  table.genes { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
+  /* The header padding must match the cells exactly, or a right-aligned number will not sit under
+     its header. Neither the header nor a cell has right padding, so the last digit of both lands on
+     the column edge and they line up; the resize grip is pinned in that padding-free strip. */
+  table.genes thead th {
+    position: sticky; top: 0; z-index: 30;
+    height: var(--thead-h); background: #1b2836;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px; font-weight: 600; letter-spacing: .3px;
+    color: var(--dim); text-align: right; padding: 0 0 0 8px; white-space: nowrap;
+    overflow: hidden;
+  }
+  table.genes thead th.sortable { cursor: pointer; user-select: none; }
+  table.genes thead th.sortable:hover { color: var(--text); }
+  table.genes thead th .arrow { color: var(--accent); margin-left: 3px; font-size: 10px; }
+  /* the header text sits over its numbers: right for the numbers, left for the two text columns */
+  table.genes thead th .th-label { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  /* the H column is centred in both header and body, so its header needs no left inset either */
+  thead th.c-helix { padding: 0; }
+  /* The name and description headings align left with their text, inset like it is. The selector has
+     to match the weight of `table.genes thead th` above (otherwise its `text-align: right` wins) and
+     the label has to fill the cell, or an inline-block would shrink-wrap and sit at the right edge. */
+  table.genes thead th.name, table.genes thead th.desc { text-align: left; padding-left: 14px; }
+  table.genes thead th.name .th-label, table.genes thead th.desc .th-label { width: 100%; }
+
+  /* drag handle, in the strip that the cells leave empty */
+  .col-resize {
+    position: absolute; top: 0; right: 0; width: 8px; height: 100%;
+    cursor: col-resize; z-index: 5;
+  }
+  .col-resize:hover, .col-resize.active { background: linear-gradient(90deg, transparent, rgba(79,179,255,.55)); }
+  body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
+
+  /* sticky helix + position columns */
+  .c-helix, .c-pos { position: sticky; z-index: 10; }
+  thead .c-helix, thead .c-pos { z-index: 31; }
+  .c-helix { left: 0; width: var(--helix-w); text-align: center; color: var(--dim); }
+  .c-pos { left: var(--helix-w); text-align: right; color: var(--dim); border-right: 1px solid var(--line2); }
+
+  tbody td { border-bottom: 1px solid var(--line2); padding: 5px 0 5px 8px; vertical-align: top; overflow: hidden; }
+  /* Alternating bands, one plain colour each: every row of a helix shares a band. */
+  tbody tr.helix-even td { background-color: #131d27; }
+  tbody tr.helix-odd td  { background-color: #1a2634; }
+  tbody tr:hover td { background-color: #24384c; }
+  tbody tr:target td, tbody tr.flash td { background-color: #2b3f2f !important; }
+  /* the sticky pair must stay opaque, and get a shade that marks the frozen edge */
+  .c-helix, .c-pos { background-color: #131d27; }
+  tr.helix-odd .c-helix, tr.helix-odd .c-pos { background-color: #1a2634; }
+  tr:hover .c-helix, tr:hover .c-pos { background-color: #24384c; }
+  .c-pos::after {
+    content: ''; position: absolute; top: 0; right: -6px; bottom: 0; width: 6px;
+    background: linear-gradient(90deg, rgba(0,0,0,.5), transparent); pointer-events: none;
+  }
+
+  tr.helix-group td {
+    position: sticky; top: var(--thead-h); z-index: 20;
+    background-color: #202f3d !important; border-top: 1px solid #33475a; border-bottom: 1px solid #33475a;
+    padding: 3px 10px; font-size: 11.5px; letter-spacing: .6px; color: #b9c9d8;
+  }
+  tr.helix-group .g-name { font-weight: 700; color: #dfe9f2; }
+  tr.helix-group .g-count { color: var(--dim); margin-left: 8px; font-size: 11px; }
+
+  /* A gap off the P column and off the g3 column, so the two text columns do not touch the numbers */
+  td.name { white-space: nowrap; padding-left: 14px; }
+  td.name a {
+    font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+    font-size: 12.5px; font-weight: 600; color: #eaf2fa; text-decoration: none;
+    border-bottom: 1px dotted #3d5164;
+  }
+  td.name a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  td.name .gid { color: var(--dim2); font-size: 10.5px; margin-left: 5px; font-family: inherit; }
+
+  td.desc { min-width: 240px; color: #c7d5e2; font-size: 12.5px; padding: 5px 24px 5px 14px; }
+  td.m button {
+    background: none; border: 1px solid transparent; border-radius: 5px;
+    color: var(--accent); font: inherit; font-variant-numeric: tabular-nums;
+    cursor: pointer; padding: 1px 6px; font-weight: 600;
+  }
+  td.m button:hover, td.m button:focus-visible {
+    border-color: var(--accent); background: rgba(79,179,255,.12); outline: none;
+  }
+  /* ---- discrete-value annotations ---- */
+  .ann-mark { color: var(--warn); font-size: 10px; margin-left: 2px; cursor: help; }
+  .g-lab {
+    display: none; font-size: 10.5px; line-height: 1.25; color: #9fd2a8;
+    font-weight: 400; margin-top: 1px; white-space: nowrap;
+  }
+  body.ann-show .g-lab { display: block; }
+  body.ann-show td.num { padding-bottom: 6px; }
+  /* ---- a g column: its base, the value that base gives, the raw column value ---- */
+  .g-cell { cursor: pointer; }
+  .g-cell:hover, .g-cell:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
+  .g-base { font-family: Consolas, ui-monospace, monospace; font-weight: 700; font-size: 12px; margin-right: 4px; }
+  .g-val { color: #eaf2fa; }
+  .g-cell .g-lab { color: #9fd2a8; }
+  /* a base effect that comes from the base itself rather than from the blended value */
+  .g-cell .g-lab.g-eff { color: var(--warn); font-style: italic; }
+  .g-lab i.sw, .chip i.sw {
+    display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+    margin-right: 4px; vertical-align: baseline; border: 1px solid rgba(255,255,255,.3);
+  }
+  .ann-note {
+    margin: 12px 0 0; padding: 8px 10px; font-size: 12px; color: #d9e6f2;
+    background: #17232e; border: 1px solid var(--line2); border-left: 3px solid var(--warn);
+    border-radius: 6px;
+  }
+  .chip.on { border-color: #3f7f4a; background: #1b2c22; }
+  /* ---- base colours: A yellow, C blue, G green, T red, everywhere a base is printed ---- */
+  .b-A { color: #e3c53d; } .b-C { color: #58a6ff; }
+  .b-G { color: #56d364; } .b-T { color: #ff6b6b; }
+  .g-val { display: inline-block; min-width: 34px; }
+
+  .no-results { padding: 30px 16px; color: var(--dim); }
+
+  /* A blank strip after the last row, so the final gene is not glued to the edge of the scroll box */
+  tbody::after { content: ''; display: block; height: 100px; }
+
+  .legend {
+    flex: 0 0 auto; padding: 10px 16px 4px; color: var(--dim); font-size: 12px;
+    border-top: 1px solid var(--line2); background: var(--panel);
+    border-left: 1px solid var(--line2); border-right: 1px solid var(--line2);
+    overflow: auto; max-height: 30vh;
+  }
+  .legend b { color: var(--text); }
+  .legend p { margin: 4px 0; }
+
+  /* ------------------------------- modal ------------------------------- */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(5,9,13,.72);
+    display: none; align-items: flex-start; justify-content: center; z-index: 100; padding: 24px 12px 12px;
+    overflow: auto;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.55); width: min(760px, 100%); padding: 0 0 16px;
+  }
+  .modal-head {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 16px 10px; border-bottom: 1px solid var(--line2);
+  }
+  .modal-head h2 { margin: 0; font-size: 17px; font-family: Consolas, ui-monospace, monospace; }
+  .modal-head .meta { color: var(--dim); font-size: 12px; margin-top: 3px; }
+  .modal-head .meta b { color: var(--text); }
+  .modal-head .spacer { flex: 1; }
+  .modal-body { padding: 14px 16px 0; }
+  .modal-desc { color: #c7d5e2; font-size: 13px; margin: 0 0 14px; }
+  .modal h3 { font-size: 12.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .8px; margin: 0 0 8px; }
+  /* started on its own line, clear of the descriptions and colour grids above it */
+  .modal h3.matrix-title { margin: 16px 0 8px; }
+
+  .matrix { border-collapse: separate; border-spacing: 3px; }
+  .matrix th {
+    font-size: 13px; font-weight: 700; text-align: center; padding: 2px 6px;
+    font-family: Consolas, ui-monospace, monospace;
+  }
+  /* the top-left cell is deliberately empty: the row and column headers carry the axes */
+  .matrix th.corner { padding: 0; }
+  /* The number and its shading are separate elements: a text-shadow of the cell's own colour would
+     smear the digits, and inheriting the cell colour would tint them. A shadow keeps the number
+     readable over both the blue and the red end of the ramp. */
+  .matrix td {
+    min-width: 62px; text-align: center; padding: 7px 6px; border-radius: 6px;
+    font-variant-numeric: tabular-nums; font-size: 13.5px; color: #fff;
+  }
+  .matrix td .mnum { display: block; text-shadow: 0 1px 2px rgba(0,0,0,.75), 0 0 4px rgba(0,0,0,.5); }
+  .matrix td small { display: block; font-size: 10px; color: rgba(255,255,255,.8); font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0,0,0,.75); }
+  /* the word for an effect that comes from the base rather than from the blended value */
+  .matrix i.eff { font-style: italic; font-weight: 600; color: var(--warn); }
+  .matrix th i.eff { display: block; font-size: 9.5px; color: var(--warn); font-weight: 600; font-style: italic; }
+  .matrix td.diag { outline: 1px solid rgba(255,255,255,.55); outline-offset: -1px; font-weight: 700; }
+  .matrix td.hit { box-shadow: inset 0 0 0 2px var(--accent); }
+  .matrix th.aa-A { color: #e3c53d; } .matrix th.aa-C { color: #58a6ff; }
+  .matrix th.aa-G { color: #56d364; } .matrix th.aa-T { color: #ff6b6b; }
+
+  /* ---- colour grids: the genes that only mean something together ---- */
+  .cgrid { border-collapse: separate; border-spacing: 2px; margin: 0 0 12px; }
+  .cgrid th {
+    font-size: 11px; font-weight: 600; color: var(--dim); text-align: center;
+    padding: 1px 5px; font-family: Consolas, ui-monospace, monospace;
+  }
+  .cgrid th.corner { font-size: 10px; color: var(--dim2); font-weight: 400; text-align: right; line-height: 1.15; }
+  .cgrid td {
+    background: #101a23; border: 1px solid var(--line2); border-radius: 6px;
+    padding: 3px 5px; min-width: 84px; vertical-align: middle;
+  }
+  .cgrid td.hit { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .csw {
+    display: inline-block; width: 13px; height: 13px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,.35); vertical-align: middle;
+  }
+  /* The three coat colours of one cell: a labelled swatch each, with the order in the cell tooltip.
+     The letter sits high inside the swatch, on a dark chip, so it reads on light and dark alike. */
+  .ctrio { display: flex; gap: 3px; justify-content: center; }
+  .ctrio .csw {
+    position: relative; width: 22px; height: 26px; border-radius: 3px; overflow: hidden;
+    padding: 0; background: none; border: 1px solid rgba(255,255,255,.35);
+  }
+  .ctrio .csw b { display: block; position: absolute; inset: 0; }
+  .ctrio .csw i {
+    position: absolute; top: 0; left: 0; z-index: 1; font-style: normal;
+    font-size: 8.5px; line-height: 1; text-transform: uppercase; padding: 1px 3px;
+    background: rgba(0,0,0,.55); color: #fff; font-family: Consolas, ui-monospace, monospace;
+    border-bottom-right-radius: 3px;
+  }
+  .ctrio .csw:last-child { margin-right: 0; }
+  .clab { font-size: 10px; color: var(--dim); margin-left: 5px; font-family: Consolas, ui-monospace, monospace; }
+  .clab i { display: block; font-style: normal; color: var(--dim2); font-size: 9px; }
+  .clab.cempty { color: var(--dim2); font-style: italic; margin-left: 0; }
+  /* a note under a colour grid, saying what the letters and the axis are */
+  .grid-key { margin: 2px 0 10px; color: var(--dim); font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .grid-key b { color: var(--text); }
+  .grid-note { margin: 0 0 12px; color: var(--dim); font-size: 12px; }
+  .m-legend { margin: 12px 0 0; color: var(--dim); font-size: 12px; }
+  .m-legend ul { margin: 6px 0 0; padding-left: 18px; }
+  .m-legend li { margin: 2px 0; }
+  .m-legend code { color: var(--accent2); }
+  .m-strip { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 20px;
+    padding: 3px 10px; font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+  .chip b { font-family: Consolas, ui-monospace, monospace; }
+  .chip.best { border-color: #3f7f4a; color: #b7f0bd; }
+  .chip.worst { border-color: #7f4a3f; color: #f0c7b7; }
+
+  @media (max-width: 700px) {
+    /* On a phone the fixed-height column would leave almost no room for the table, so the page
+       scrolls as a whole there and the table keeps its own scroll. */
+    html, body { height: auto; overflow: auto; }
+    body { display: block; }
+    .table-wrap { max-height: 70vh; }
+    h1 { font-size: 16px; }
+    td.desc { min-width: 200px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="title-row">
+    <h1><span class="dna">🧬</span>Horsey Game Genome Table</h1>
+  </div>
+  <div class="controls">
+    <div class="search-wrap">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+        <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4.3-4.3"></path>
+      </svg>
+      <input id="search" type="search" placeholder="Search gene names or descriptions..." autocomplete="off" spellcheck="false" aria-label="Search genes">
+      <button id="clearSearch" title="Clear search" aria-label="Clear search">&times;</button>
+    </div>
+    <span class="count" id="count"></span>
+    <span style="flex:1"></span>
+    <button class="btn" id="resetBtn" title="Clear the search, the sort and the link in the address bar">Reset</button>
+  </div>
+</header>
+
+<div class="table-wrap" id="tableWrap">
+  <table class="genes" id="geneTable">
+    <colgroup id="colGroup"></colgroup>
+    <thead>
+      <tr id="headRow"></tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<div class="legend" id="legend"></div>
+
+<div class="modal-bg" id="modalBg" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2 id="modalTitle">GENE</h2>
+        <div class="meta" id="modalMeta"></div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn" id="copyLink">Copy link</button>
+      <button class="btn" id="closeModal" aria-label="Close">&times; Esc</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-desc" id="modalDesc"></p>
+      <div id="modalAnn"></div>
+      <div id="gridHost"></div>
+      <h3 class="matrix-title">Value for every pair of bases</h3>
+      <div id="matrixHost"></div>
+      <div class="m-legend" id="matrixNote"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   DATA - generated from shared/data/genes.xml. Do not hand-edit; rebuild
+   from the XML if the gene table changes.
+   genes[i] = { i: gene index (0..239), n: name, h: helix, p: position,
+                m: dominance, s: scale, o: base order (n), g: [4] values,
+                d: what the gene does, x: index into MAT,
+                a: the discrete-value names and the gene's caveat, written by
+                   tools/build-gene-table-annotations.py }
+   MAT[i]   = 16 values, row-major 4x4, MAT[i][a*4+b] = the gene's value
+              when the dominant base is column a and the recessive is b
+              (diagonal = both strands the same base).
+   ===================================================================== */
+const DATA = {"genes":[{"i":0,"n":"SIZE","h":6,"p":0,"m":95,"s":100,"o":"ATGC","g":[100,50,35,75],"d":"Sets how big the whole torso is. A bigger value makes the body taller and wider.","x":0},{"i":1,"n":"ASPECT","h":6,"p":1,"m":95,"s":100,"o":"GCAT","g":[200,310,150,250],"d":"Changes the shape of the torso, keeping the same area. A higher value gives a longer body; on a biped it gives a taller body.","x":1},{"i":2,"n":"SKINNY","h":6,"p":2,"m":100,"s":100,"o":"GACT","g":[100,200,100,75],"d":"Changes the shape of the torso rather than its size. A higher value gives a longer body; on a biped it gives a taller body.","x":2},{"i":3,"n":"BONES","h":0,"p":0,"m":95,"s":100,"o":"GCAT","g":[0,-14,14,0],"d":"Makes the body and the head bigger, but it does not change the legs or the arms. Similar to BONES2.","x":3},{"i":4,"n":"BONES2","h":0,"p":1,"m":60,"s":100,"o":"TGCA","g":[0,16,-16,0],"d":"Makes the body and the head bigger, but it does not change the legs or the arms. Similar to BONES.","x":4},{"i":5,"n":"CHEST_BIG","h":6,"p":3,"m":100,"s":100,"o":"ATCG","g":[104,102,108,102],"d":"Makes the torso taller without making it wider and does not change the head.","x":5},{"i":6,"n":"CHEST_SMALL","h":6,"p":4,"m":100,"s":100,"o":"GCTA","g":[95,100,90,95],"d":"Makes the torso taller and wider, and does not change the head. Having an A base gives a sloped front to the torso.","x":6,"a":{"l":{"3":"sloped"},"sep":{"cells":{"0.95":{"3":"sloped chest"}},"axis":{"3":"sloped"},"matrix":"sloped"},"t":"The sloped chest comes from having the A base."}},{"i":7,"n":"GIANT_DWARF","h":0,"p":4,"m":100,"s":100,"o":"GACT","g":[100,66,133,100],"d":"Makes the whole torso bigger or smaller. It does not change the head.","x":7},{"i":8,"n":"MUSCLE_USE","h":2,"p":0,"m":100,"s":100,"o":"CTAG","g":[100,50,80,100],"d":"Makes the legs and arms push harder, so the horse can swing them with more force.","x":8},{"i":9,"n":"QUADRUPED","h":5,"p":0,"m":100,"s":1,"o":"CGAT","g":[1,0,1,0],"d":"Turning this on makes the torso horizontal. With BIPED also on you get a centaur body.","x":9},{"i":10,"n":"BIPED","h":5,"p":1,"m":100,"s":1,"o":"TAGC","g":[0,1,0,1],"d":"Turning this on makes the torso vertical. With QUADRUPED also on you get a centaur body.","x":10},{"i":11,"n":"SPLAY","h":3,"p":0,"m":100,"s":1,"o":"ACTG","g":[0,10,-5,45],"d":"Sets how far out the legs angle, in degrees. The back leg(s) and the front leg(arm) angle outwards away from the other.","x":11},{"i":12,"n":"LEG_IN","h":3,"p":1,"m":50,"s":100,"o":"CGAT","g":[0,18,6,0],"d":"How far in from the body edge the legs and arms are attached. Similar to LEG_IN2.","x":12},{"i":13,"n":"LEG_IN2","h":3,"p":2,"m":100,"s":100,"o":"CGAT","g":[0,13,0,1],"d":"How far in from the body edge the legs and arms are attached. Similar to LEG_IN.","x":13,"a":{"t":"Allele 3 carries a known bug: it adds +0.2 to the back leg."}},{"i":14,"n":"GUT","h":1,"p":0,"m":100,"s":100,"o":"TGAC","g":[0,25,45,0],"d":"Gives the horse a belly. The shape is affected by GUT_IS_UDDER.","x":14},{"i":15,"n":"GUT_IS_UDDER","h":1,"p":1,"m":100,"s":1,"o":"ACGT","g":[0,1,0,2],"d":"Chooses the belly shape: 0 is the plain rounded belly, 1 turns the belly into a small skin colored udder, 2 keeps the belly but adds nipples to it.","x":15,"a":{"l":{"0":"Plain gut","1":"Udder lobe","2":"Beaded gut arc"},"t":"With GUT 0 the udder is not drawn but still counts as an udder."}},{"i":16,"n":"OSTODERM","h":0,"p":2,"m":100,"s":1,"o":"GATC","g":[1,0,1,2],"d":"Draws spikes: 0 none; 1 adds row of spikes along the longer edge of the torso; 2 a single spike in the middle of the longer edge.","x":16,"a":{"l":{"0":"None","1":"Spike row","2":"Single spike"}}},{"i":17,"n":"OSTO_SIZE","h":0,"p":3,"m":85,"s":100,"o":"TACG","g":[30,15,45,45],"d":"Sets how big the spikes are. If a base is g3(G), it makes the spikes rounded, and forces a single spike if OSTODERM is 0.","x":17,"a":{"l":{"3":"rounded"},"sep":{"cells":{"0.45":{"3":"rounded spikes"}},"axis":{"3":"rounded"},"matrix":"rounded"},"t":"The rounded spikes come from having the G base."}},{"i":18,"n":"DERRIERE","h":1,"p":2,"m":85,"s":100,"o":"CTGA","g":[0,40,70,10],"d":"Gives the horse a rounded rump. Values below 0.125 are treated as 0.","x":18,"a":{"t":"Below 0.125 the renderer treats the derriere as hidden."}},{"i":19,"n":"SPEED_FACTOR","h":18,"p":1,"m":75,"s":100,"o":"GCAT","g":[100,30,50,133],"d":"Affects how fast the legs and arms swing.","x":19,"a":{"t":"Behaviour: limb speed."}},{"i":20,"n":"BREAK_FORCE","h":4,"p":9,"m":100,"s":10,"o":"GATC","g":[0,54,0,35],"d":"How much strain the limbs can take before they snap, higher values last longer; 0 disables snapping, but it can still happen with very large horses or glitches.","x":20},{"i":21,"n":"TAIL_TAG","h":7,"p":0,"m":100,"s":1,"o":"TAGC","g":[3,4,2,1],"d":"Chooses what grows in the tail socket: 1 a leg, 2 an arm, 3 a tail, 4 a neck.","x":21,"a":{"l":{"1":"Leg","2":"Arm","3":"Tail","4":"Neck"}}},{"i":22,"n":"TAIL_EXISTS","h":7,"p":1,"m":100,"s":1,"o":"GCAT","g":[1,0,1,2],"d":"Decides whether the horse has a tail: 0 none, 1 draws one tail, and 2 grows 2 tails from the same joint.","x":22,"a":{"l":{"0":"None","1":"Single","2":"Double"}}},{"i":23,"n":"TAIL_SIZE","h":7,"p":2,"m":60,"s":100,"o":"GCAT","g":[100,80,120,140],"d":"Makes the tail longer and thicker.","x":23},{"i":24,"n":"TAIL_SHORT","h":7,"p":3,"m":100,"s":100,"o":"CAGT","g":[100,50,35,100],"d":"Sets how long the tail is. Does not affect square shaped tails.","x":24},{"i":25,"n":"TAIL_ASPECT","h":7,"p":4,"m":90,"s":100,"o":"AGCT","g":[20,10,30,50],"d":"Sets how thick the tail is at its base.","x":25},{"i":26,"n":"TAIL_ANGLE","h":3,"p":3,"m":100,"s":1,"o":"GCAT","g":[45,90,135,60],"d":"The angle of the tail, in degrees: 90 points straight out behind, less than 90 droops downwards, and more than 90 tilts up. When TAIL_BOTTOM is in effect, the tail comes out at 90 degrees and ignores this gene.","x":26},{"i":27,"n":"TAIL_JOINT_TYPE","h":3,"p":4,"m":100,"s":1,"o":"ATGC","g":[0,1,0,0],"d":"Affects the part at the tail position. 0 = hinge with limited range; 1 = full rotation; 2 = piston in/out movement. When TAIL_BOTTOM is in effect, tail joint is always a hinge and ignores this gene.","x":27,"a":{"l":{"0":"Normal (0)","1":"Rotate","2":"Normal (0)","3":"Normal (0)"},"t":"Only read when TAIL_EXISTS is 2."}},{"i":28,"n":"TAIL_STIFF","h":2,"p":1,"m":100,"s":1,"o":"ATGC","g":[0,1,0,1],"d":"If this is 0, the tail will hang loose and be uncontrollable.","x":28,"a":{"t":"Only read for the chromosome tail shape (6)."}},{"i":29,"n":"TAIL_SPEED","h":2,"p":5,"m":100,"s":10,"o":"GCAT","g":[60,200,60,0],"d":"Sets how fast the tail swings.","x":29},{"i":30,"n":"TAIL_FLEXIBILITY","h":2,"p":4,"m":100,"s":1,"o":"GTAC","g":[135,90,45,15],"d":"Affects how far the tail can rotate/move. No effect for tail joint that does full rotations.","x":30},{"i":31,"n":"TAIL_SHAPE","h":7,"p":5,"m":100,"s":1,"o":"AGTC","g":[2,1,5,6],"d":"1 = a single rectangle or a chain of rectangles, 2 = a single triangle, 5 = a stubby square or a chain of squares, 6 = DNA Chain","x":31,"a":{"l":{"1":"Rectangle chain","2":"Triangle","5":"Square (stubby)","6":"Chromosome chain"}}},{"i":32,"n":"TAIL_BOTTOM","h":0,"p":5,"m":100,"s":1,"o":"GTCA","g":[0,1,0,0],"d":"Moves the tail from the rear top corner down to the bottom corner and points it straight back. Does not affect upright/biped horses and horses will a rump.","x":32,"a":{"t":"Quadruped/centaur only, and needs DERRIERE below 0.125."}},{"i":33,"n":"TAIL_SEGMENTS","h":7,"p":6,"m":100,"s":1,"o":"GTCA","g":[3,0,3,5],"d":"Number of tail segments. Only affect rectangle and square shaped tails.","x":33,"a":{"t":"Rectangles and squares only (tail shape 1 or 5). 3, 0, 3 or 5 segments; rectangles and squares only."}},{"i":34,"n":"LEG_TAG","h":4,"p":0,"m":100,"s":1,"o":"ATGC","g":[1,2,4,3],"d":"Chooses what grows in the back leg socket: 1 a leg, 2 an arm, 3 a tail, 4 a neck. Affected by LEG_COUNT, and a neck becomes a leg LEG_COUNT is more than 1.","x":34,"a":{"l":{"1":"Leg","2":"Arm","3":"Tail","4":"Neck"}}},{"i":35,"n":"LEG_TYPE","h":8,"p":0,"m":100,"s":1,"o":"TACG","g":[1,2,0,1],"d":"Affects how the leg looks: 0 = no leg at all, 1 = normal leg, 2= short stubby leg.","x":35,"a":{"l":{"0":"None","1":"Leg","2":"Short (atrophied)","3":"Leg"}}},{"i":36,"n":"LEG_LENGTH","h":8,"p":1,"m":90,"s":100,"o":"CATG","g":[80,50,120,100],"d":"Affects the length of leg.","x":36},{"i":37,"n":"LEG_STRETCH","h":8,"p":2,"m":60,"s":100,"o":"GACT","g":[0,14,-14,0],"d":"Adds to the length of legs and arms. Similar to LEG_STRETCH2.","x":37},{"i":38,"n":"LEG_STRETCH2","h":0,"p":6,"m":100,"s":100,"o":"ATCG","g":[0,-16,16,0],"d":"Adds to the length of legs and arms. Similar to LEG_STRETCH.","x":38},{"i":39,"n":"LEG_STRENGTH","h":8,"p":4,"m":60,"s":100,"o":"GCTA","g":[95,120,80,104],"d":"Leg Thickness.","x":39},{"i":40,"n":"LEG_HAS_FOOT","h":4,"p":1,"m":100,"s":1,"o":"GACT","g":[1,1,0,0],"d":"This and HAS_FOOT both needs to be 1 for legs to have feet.","x":40,"a":{"t":"Foot genes need HAS_FOOT and LEG_HAS_FOOT both on."}},{"i":41,"n":"LEG_JOINT_TYPE","h":3,"p":5,"m":100,"s":1,"o":"AGTC","g":[0,1,2,0],"d":"Affects the part at the back leg position. 0 = hinge with limited range; 1 = 360 rotation; 2 = piston in/out movement.","x":41,"a":{"l":{"0":"Normal (0)","1":"Rotate","2":"Piston","3":"Normal (0)"}}},{"i":42,"n":"LEG_FLEXIBILITY","h":2,"p":2,"m":80,"s":1,"o":"GTCA","g":[30,20,40,50],"d":"Affects how far the leg can rotate/move. No effect for leg joint that does full rotations.","x":42},{"i":43,"n":"LEG_FLEX_BIAS","h":2,"p":3,"m":100,"s":1,"o":"CGAT","g":[15,20,10,-10],"d":"Affect the leg's resting angle. No effect for leg joint that does full rotations.","x":43,"a":{"t":"Needs LEG_JOINT_TYPE 2; overridden by LEG_THRUST_BACK 2."}},{"i":44,"n":"LEG_THRUST_BACK","h":4,"p":3,"m":100,"s":1,"o":"GCTA","g":[0,1,0,2],"d":"0 = no effect, 1 = makes piston jointed legs point backwards, 2 double the splay angle.","x":44,"a":{"l":{"0":"None (0)","1":"Back","2":"None (0)","3":"Extreme"}}},{"i":45,"n":"LEG_IS_CIRCLE","h":1,"p":3,"m":100,"s":1,"o":"ATGC","g":[0,1,0,0],"d":"Replaces the whole leg with a wheel. When leg has a foot, and FOOT_IS_CIRCLE is 1, you get a normal leg and the foot is replaced with a wheel.","x":45,"a":{"t":"With a circle leg, a circle foot is foot circle mode; without one it is wheel mode."}},{"i":46,"n":"LEG_COUNT","h":4,"p":2,"m":100,"s":1,"o":"CGTA","g":[1,1,2,7],"d":"How many back legs grow along the bottom of the body. You might get less legs if the body is not long/wide enough.","x":46,"a":{"l":{"1":"1 back leg","2":"2 back legs","7":"7 back legs"}}},{"i":47,"n":"LEG_SKEW","h":8,"p":3,"m":60,"s":100,"o":"TCGA","g":[0,24,-16,0],"d":"Affects normal legs with no knees. If the leg is a wheel, it shifts the center of rotation.","x":47},{"i":48,"n":"LEG_PENCIL","h":8,"p":5,"m":100,"s":100,"o":"ATGC","g":[0,10,0,0],"d":"Makes the leg thin and long. A thin pencil leg.","x":48},{"i":49,"n":"LEG_AND_ARM_LIMP","h":2,"p":6,"m":100,"s":1,"o":"TAGC","g":[0,0,0,1],"d":"0 = no effect, 1 = LEG and ARMS swings freely and cannot move on their own.","x":49},{"i":50,"n":"HAS_KNEE","h":3,"p":6,"m":100,"s":1,"o":"TCGA","g":[0,1,0,0],"d":"Creates a knee joint in the leg parts. Range of movement of the joint is set by KNEE_MIN and KNEE_MAX.","x":50,"a":{"t":"Needs a non-zero knee range and is overridden by LEG_TYPE 2."}},{"i":51,"n":"KNEE_MIN","h":3,"p":7,"m":100,"s":1,"o":"CGAT","g":[0,-90,-15,0],"d":"The lower limit of the knee in degrees. It has an effect only when the horse has a knee.","x":51,"a":{"t":"Requires HAS_KNEE."}},{"i":52,"n":"KNEE_MAX","h":3,"p":8,"m":100,"s":1,"o":"TAGC","g":[20,90,45,20],"d":"The upper limit of the knee in degrees. It has an effect only when the horse has a knee.","x":52,"a":{"t":"Requires HAS_KNEE."}},{"i":53,"n":"ARM_TAG","h":4,"p":4,"m":100,"s":1,"o":"GTAC","g":[1,2,4,3],"d":"Chooses what grows in the front leg socket: 1 a leg, 2 an arm, 3 a tail, 4 a neck.","x":53,"a":{"l":{"1":"Leg","2":"Arm","3":"Tail","4":"Neck"}}},{"i":54,"n":"ARM_TYPE","h":8,"p":6,"m":100,"s":1,"o":"CGAT","g":[1,2,0,0],"d":"Chooses the arm type: 0 grows no arm. 1 gives a normal arm, 2 a short stub.","x":54,"a":{"l":{"0":"None","1":"Arm","2":"Stub","3":"None"}}},{"i":55,"n":"ARM_LENGTH","h":8,"p":7,"m":90,"s":100,"o":"ATCG","g":[80,50,120,25],"d":"The length of the arm.","x":55},{"i":56,"n":"ARM_STRETCH","h":8,"p":8,"m":60,"s":100,"o":"GACT","g":[0,14,-14,0],"d":"No Effect.","x":56,"a":{"t":"No Effect."}},{"i":57,"n":"ARM_STRETCH2","h":0,"p":7,"m":100,"s":100,"o":"TCAG","g":[0,-16,16,0],"d":"No Effect.","x":57,"a":{"t":"No Effect."}},{"i":58,"n":"ARM_STRENGTH","h":2,"p":7,"m":60,"s":100,"o":"ATCG","g":[95,120,80,104],"d":"Sets how thick the arm is.","x":58},{"i":59,"n":"ARM_HAS_HAND","h":4,"p":5,"m":100,"s":1,"o":"CGTA","g":[1,0,1,0],"d":"When this and HAS_HAND is 1, arms will have a hand at the end.","x":59,"a":{"t":"Hand genes need HAS_HAND and ARM_HAS_HAND both on."}},{"i":60,"n":"ARM_JOINT_TYPE","h":3,"p":9,"m":100,"s":1,"o":"GCTA","g":[0,1,2,0],"d":"Affects the part at the front leg(arm) socket. 0 = hinge with limited range; 1 = 360 rotation; 2 = piston in/out movement.","x":60,"a":{"l":{"0":"Normal (0)","1":"Rotate","2":"Piston","3":"Normal (0)"}}},{"i":61,"n":"ARM_FLEXIBILITY","h":2,"p":8,"m":100,"s":1,"o":"ACTG","g":[30,20,40,30],"d":"How far the arm socket part can swing, in degrees. On a piston arm it instead limits how far the arm can extend.","x":61},{"i":62,"n":"ARM_FLEX_BIAS","h":2,"p":9,"m":100,"s":1,"o":"GCTA","g":[15,20,10,0],"d":"Changes the arm's resting angle. Does not affect full rotation joints.","x":62,"a":{"t":"Needs ARM_JOINT_TYPE 2; overridden by LEG_THRUST_BACK 2."}},{"i":63,"n":"ARM_FORWARD","h":5,"p":5,"m":100,"s":1,"o":"CTGA","g":[-20,0,60,40],"d":"The angle of the front leg(arm). Positve value = arm rotates forwards, Negative value = arm rotates backwards.","x":63,"a":{"t":"Overridden by LEG_THRUST_BACK 2."}},{"i":64,"n":"ARM_SKEW","h":8,"p":9,"m":100,"s":100,"o":"TCGA","g":[0,20,-20,0],"d":"Adds a bend to arms parts if they have no elbows.","x":64},{"i":65,"n":"ARM_NODE_SCALE","h":8,"p":10,"m":50,"s":100,"o":"CTGA","g":[100,70,130,100],"d":"Scales the length or wheel size, of a leg growing in the front leg socket or upper-arm sockets.","x":65,"a":{"t":"Scales the legs drawn in the arm socket."}},{"i":66,"n":"HAS_ELBOW","h":3,"p":10,"m":100,"s":1,"o":"CATG","g":[0,1,0,0],"d":"Creates a elbow joint in the arm parts. Range of movement of the joint is set by ELBOW_RANGE.","x":66,"a":{"t":"Needs a non-zero ELBOW_RANGE and is overridden by ARM_TYPE 2."}},{"i":67,"n":"ELBOW_RANGE","h":3,"p":11,"m":100,"s":1,"o":"CTAG","g":[30,90,10,30],"d":"How many degrees the elbow can bend.","x":67,"a":{"t":"Requires HAS_ELBOW."}},{"i":68,"n":"UPARM_TAG","h":5,"p":2,"m":100,"s":1,"o":"ATCG","g":[0,2,1,4],"d":"Chooses what grows in the upper-arm socket(s): 0 nothing, 1 a leg, 2 an arm, 4 a neck.","x":68,"a":{"l":{"0":"None","1":"Leg","2":"Arm","4":"Neck"}}},{"i":69,"n":"UPARM_Y","h":5,"p":3,"m":80,"s":100,"o":"CTAG","g":[30,10,30,50],"d":"How far up the body the upper-arm socket(s) sit.","x":69},{"i":70,"n":"UPARM_ANGLE","h":5,"p":6,"m":100,"s":1,"o":"GCAT","g":[0,30,-30,-45],"d":"The angle of the part in the upper-arm socket(s), in degrees.","x":70},{"i":71,"n":"UPARM_GOOFY","h":5,"p":4,"m":100,"s":1,"o":"ACGT","g":[0,1,2,3],"d":"Chooses where the upper-arms spawn. 0 = front and back, 1 = both at the front, 2 = one at the back, and 3 = one in front.","x":71,"a":{"l":{"0":"Front and Back","1":"Both in Front","2":"Back only","3":"Front only"}}},{"i":72,"n":"NECK_TAG","h":4,"p":6,"m":100,"s":1,"o":"AGTC","g":[4,3,1,2],"d":"Chooses what grows in the neck socket: 4 the neck and head, 3 a tail, 1 a leg, and 2 an arm.","x":72,"a":{"l":{"1":"Leg","2":"Arm","3":"Tail","4":"Neck and head"}}},{"i":73,"n":"NECK_TYPE","h":6,"p":5,"m":100,"s":1,"o":"TACG","g":[1,1,2,0],"d":"Neck/Head type: 1 the neck and head, 2 the head only, and 0 neither (no head no neck).","x":73,"a":{"l":{"0":"Headless","1":"Neck and head","2":"Head only"}}},{"i":74,"n":"NECK_LENGTH","h":6,"p":6,"m":90,"s":100,"o":"ATGC","g":[60,70,90,30],"d":"The neck's length. Similar to NECK_GIRAFFE.","x":74},{"i":75,"n":"NECK_GIRAFFE","h":6,"p":7,"m":90,"s":100,"o":"TCAG","g":[110,0,85,120],"d":"The neck's length. Similar to NECK_LENGTH.","x":75},{"i":76,"n":"NECK_THICKNESS","h":6,"p":8,"m":60,"s":100,"o":"CGTA","g":[95,110,120,80],"d":"The neck's thickness.","x":76},{"i":77,"n":"NECK_ANGLE","h":6,"p":9,"m":90,"s":1,"o":"TACG","g":[45,30,60,75],"d":"The neck's base pitch in degrees. Works togther with NECK_COCK.","x":77,"a":{"t":"Total neck tilt is NECK_ANGLE + NECK_COCK."}},{"i":78,"n":"NECK_COCK","h":6,"p":10,"m":100,"s":1,"o":"CGAT","g":[0,30,20,-25],"d":"The neck's base pitch in degrees. Works togther with NECK_ANGLE.","x":78,"a":{"t":"Total neck tilt is NECK_ANGLE + NECK_COCK."}},{"i":79,"n":"NECK_JOINT_TYPE","h":3,"p":12,"m":100,"s":1,"o":"TGCA","g":[1,0,2,0],"d":"Chooses the neck's socket joint: 0= normal hinge that only bends within limits, 1= full rotation, 2= piston that moves in/out.","x":79,"a":{"l":{"0":"Rotate (hinge)","1":"Normal (ball)","2":"Piston"}}},{"i":80,"n":"NECK_FLEXIBILITY","h":2,"p":10,"m":100,"s":1,"o":"GTCA","g":[23,10,40,0],"d":"How far the neck can bend. Does not affect rotational neck joints.","x":80},{"i":81,"n":"NECK_FLEX_BIAS","h":2,"p":11,"m":100,"s":1,"o":"GATC","g":[-8,0,-25,30],"d":"Sets the resting position of the neck. Does not affect rotational neck joints.","x":81},{"i":82,"n":"NECK_SLOUCH","h":4,"p":7,"m":60,"s":100,"o":"CTGA","g":[0,50,20,0],"d":"When the NECK_ONTOP is 0, and the horse is not a centaur, this positions the neck joint down the front of the body.","x":82,"a":{"t":"Skipped for the centaur posture and overridden by NECK_ONTOP."}},{"i":83,"n":"NECK_ONTOP","h":4,"p":8,"m":100,"s":100,"o":"GTCA","g":[0,50,70,20],"d":"How far back along the top of the body the neck joint sits.","x":83},{"i":84,"n":"NECK_STIFF","h":0,"p":9,"m":100,"s":1,"o":"CATG","g":[0,1,0,1],"d":"At 0, the neck will hang loose, and the horse cannot move the neck on its own.","x":84},{"i":85,"n":"NECK_SPEED","h":18,"p":2,"m":100,"s":10,"o":"AGCT","g":[60,25,50,10],"d":"How fast the neck moves.","x":85},{"i":86,"n":"HAS_FOOT","h":9,"p":0,"m":100,"s":1,"o":"TACG","g":[1,0,1,0],"d":"Need LEG_HAS_FOOT to be 1 as well for a foot to show up. Otherwise legs have no feet.","x":86,"a":{"t":"Foot genes need HAS_FOOT and LEG_HAS_FOOT both on."}},{"i":87,"n":"FOOT_SIZE","h":9,"p":1,"m":60,"s":100,"o":"GTAC","g":[0,20,12,30],"d":"How big the foot is.","x":87},{"i":88,"n":"FOOT_CLOWN","h":9,"p":2,"m":100,"s":100,"o":"GTAC","g":[0,30,0,0],"d":"Lengthens the foot, but only when the FOOT_SIZE > 0.","x":88,"a":{"t":"Requires FOOT_SIZE above 0."}},{"i":89,"n":"FOOT_THICKNESS","h":9,"p":3,"m":80,"s":100,"o":"TCAG","g":[20,15,30,7],"d":"How thick the foot is.","x":89},{"i":90,"n":"FOOT_TOE","h":9,"p":4,"m":100,"s":100,"o":"AGCT","g":[100,0,50,100],"d":"Extends only the bottom of the foot, so the foot gets a more pointed look.","x":90},{"i":91,"n":"FOOT_IS_CIRCLE","h":1,"p":4,"m":100,"s":1,"o":"GACT","g":[0,1,0,0],"d":"Only works when LEG_IS_CIRCLE is 1. The leg becomes normal, but the foot turn into a wheel. These foot wheels cannot turn on it's own though.","x":91,"a":{"t":"Requires LEG_IS_CIRCLE 1."}},{"i":92,"n":"FOOT_BACKWARDS","h":9,"p":5,"m":100,"s":1,"o":"AGCT","g":[0,1,0,2],"d":"0 = off. 1 or 2 = turns the feet and hands backwards.","x":92,"a":{"l":{"0":"Forward (0)","1":"Backward","2":"Forward (0)","3":"Alt"}}},{"i":93,"n":"HAS_HAND","h":9,"p":6,"m":100,"s":1,"o":"CGTA","g":[0,1,0,1],"d":"Need ARM_HAS_HAND to be 1 as well for a hand to show up. Otherwise arms have no hands.","x":93,"a":{"t":"Hand genes need HAS_HAND and ARM_HAS_HAND both on."}},{"i":94,"n":"HAND_WIDTH","h":9,"p":7,"m":100,"s":100,"o":"GACT","g":[0,7,20,0],"d":"How wide the hand is.","x":94,"a":{"t":"Needs a hand (HAS_HAND + ARM_HAS_HAND) with hand length above 0."}},{"i":95,"n":"HAND_LENGTH","h":9,"p":8,"m":90,"s":100,"o":"CGAT","g":[20,30,15,20],"d":"How long the hand is.","x":95},{"i":96,"n":"HAND_FINGER","h":9,"p":9,"m":80,"s":100,"o":"CTGA","g":[0,100,0,50],"d":"How long and how pointy the hand is.","x":96,"a":{"t":"Needs a hand with hand length above 0. 0, 100, 0 or 50: the finger amount is a percentage."}},{"i":97,"n":"HEAD_SIZE","h":10,"p":0,"m":95,"s":100,"o":"GCTA","g":[100,50,133,75],"d":"Affect the head's size.","x":97},{"i":98,"n":"HEAD_THICK_SKULL","h":0,"p":8,"m":100,"s":100,"o":"TGAC","g":[0,20,0,0],"d":"Adds to the head size.","x":98},{"i":99,"n":"HEAD_X_GROWTH","h":10,"p":1,"m":100,"s":100,"o":"ACGT","g":[0,5,10,-5],"d":"Affects the sideways length of the head.","x":99},{"i":100,"n":"HEAD_Y_GROWTH","h":10,"p":2,"m":100,"s":100,"o":"TACG","g":[0,5,-5,0],"d":"Affects the vertical height of the head.","x":100},{"i":101,"n":"HEAD_ASPECT","h":10,"p":3,"m":85,"s":100,"o":"TCAG","g":[200,175,250,300],"d":"The head's width to height ratio. It is used only when the HEAD_SQUARE is 0.","x":101,"a":{"t":"Overridden once HEAD_SQUARE is non-zero."}},{"i":102,"n":"HEAD_SQUARE","h":10,"p":4,"m":100,"s":100,"o":"CTAG","g":[0,150,100,0],"d":"The head's width to height ratio. If this is 0, uses HEAD_ASPECT instead.","x":102},{"i":103,"n":"HEAD_HAS_BACK","h":10,"p":5,"m":100,"s":1,"o":"GTCA","g":[11,0,0,1],"d":"0 = no effect. 1 or 11 Fills up the gap behind the eyebox and above the head. Affects the ear position.","x":103,"a":{"l":{"0":"Yes!","1":"No (0)","2":"No (0)","3":"Yes"}}},{"i":104,"n":"HEAD_GIANT","h":10,"p":6,"m":90,"s":100,"o":"CTAG","g":[100,200,180,100],"d":"Scales the head size.","x":104},{"i":105,"n":"HEAD_SHRUNK","h":10,"p":7,"m":90,"s":100,"o":"CATG","g":[100,70,50,100],"d":"Scales the head size.","x":105},{"i":106,"n":"HEAD_JOINTED","h":3,"p":13,"m":100,"s":1,"o":"CATG","g":[0,1,0,0],"d":"0= no effect. 1= head will hang loosely from the neck.","x":106},{"i":107,"n":"HEAD_CHIMERA","h":10,"p":8,"m":100,"s":1,"o":"ATCG","g":[0,1,0,0],"d":"Affects breeding. The parent with HEAD_CHIMERA will contribute head related genes, while the other parent will contribute all other genes. No effect if both parents have HEAD_CHIMERA.","x":107,"a":{"l":{"1":"chimera (TT pair only)"},"t":"Only the TT pair (both strands on the highest allele column) draws the chimeric head."}},{"i":108,"n":"EYE_STYLE","h":11,"p":0,"m":100,"s":1,"o":"CATG","g":[1,2,1,0],"d":"0=no eye. 1 or 2 = eye.","x":108,"a":{"l":{"0":"No eye","1":"Eye style 1","2":"Eye style 2"},"t":"Style 0 removes the eyes and disables the eye size, pupil and brow genes."}},{"i":109,"n":"BUGEYE","h":11,"p":1,"m":100,"s":1,"o":"GACT","g":[0,1,0,2],"d":"0=no effect. 1 pushes the eye box to the front of the head. 2 also caps the eye box size, sinks it in a little.","x":109,"a":{"l":{"0":"Normal","1":"Eyes out","2":"Eyes in"}}},{"i":110,"n":"EYEBOX_X","h":10,"p":9,"m":90,"s":100,"o":"AGCT","g":[33,0,50,15],"d":"Left/Right position of the eyebox.","x":110,"a":{"t":"Overridden by Bugeye 1."}},{"i":111,"n":"EYEBOX_Y","h":10,"p":10,"m":100,"s":100,"o":"CGTA","g":[-100,0,-50,-25],"d":"Up/Down position of the eyebox","x":111,"a":{"t":"Overridden by Bugeye 2."}},{"i":112,"n":"EYEBOX_SIZE","h":10,"p":11,"m":60,"s":100,"o":"ATGC","g":[25,15,33,50],"d":"Size of the eyebox.","x":112},{"i":113,"n":"EYE_SIZE","h":11,"p":2,"m":100,"s":100,"o":"ACTG","g":[50,75,125,50],"d":"Size of the eye.","x":113},{"i":114,"n":"PUPIL_SIZE","h":11,"p":3,"m":100,"s":100,"o":"CAGT","g":[66,80,40,40],"d":"Size of the pupil.","x":114,"a":{"t":"Requires HAS_PUPIL."}},{"i":115,"n":"HAS_PUPIL","h":11,"p":4,"m":100,"s":1,"o":"ATCG","g":[1,0,0,0],"d":"0=eye has no pupil. 1=eye has pupil.","x":115},{"i":116,"n":"BROW_SIZE","h":11,"p":5,"m":100,"s":100,"o":"GATC","g":[0,150,125,0],"d":"The size of the eyebrow.","x":116},{"i":117,"n":"BROW_SLANT","h":11,"p":6,"m":100,"s":1,"o":"GTAC","g":[0,-15,15,0],"d":"The tilt of the eyebrow in degrees.","x":117,"a":{"t":"Requires BROW_SIZE above 0."}},{"i":118,"n":"EAR_STYLE","h":11,"p":8,"m":100,"s":1,"o":"TGCA","g":[1,2,0,0],"d":"0,4=no ear, 1=ear points up, 2=ear points down","x":118,"a":{"l":{"0":"No ears","1":"Ears up","2":"Ears down"}}},{"i":119,"n":"EAR_SHAPE","h":11,"p":9,"m":100,"s":1,"o":"CGAT","g":[2,1,4,2],"d":"Shape of the ear: 1=rectangle, 2=triangle, 4=no ear?","x":119,"a":{"l":{"1":"Rectangle","2":"Triangle","4":"No ears"}}},{"i":120,"n":"EAR_FLOP","h":11,"p":14,"m":100,"s":1,"o":"CTAG","g":[0,30,60,200],"d":"How far a jointed ear swings, in degrees.","x":120},{"i":121,"n":"EAR_X","h":4,"p":10,"m":90,"s":100,"o":"TAGC","g":[0,100,50,0],"d":"The left/right position of the ear.","x":121},{"i":122,"n":"EAR_SIZE","h":11,"p":10,"m":70,"s":100,"o":"TCGA","g":[20,30,10,40],"d":"Size of the ear. Note that a very small ear will result in delayed starts.","x":122,"a":{"t":"Below 0.17 (EAR_SIZE 10, the third column) the creature gets race flag 0x20000, \"Late start\": it may wait a random 30-300 ticks at the gun (phys-nodes.js:787, race.js:152)."}},{"i":123,"n":"EAR_ASPECT","h":11,"p":11,"m":100,"s":100,"o":"ATCG","g":[100,250,300,100],"d":"Height of the ear, when compared to its width.","x":123},{"i":124,"n":"EAR_SLANT","h":11,"p":12,"m":70,"s":100,"o":"GACT","g":[0,100,50,-33],"d":"Change the slant angle on triangular/pointed ears.","x":124},{"i":125,"n":"EAR_INTERIOR","h":11,"p":13,"m":100,"s":100,"o":"TAGC","g":[5,0,0,0],"d":"Affects the the skin coloured patch inside the ear.","x":125},{"i":126,"n":"TEETH_SHAPE","h":12,"p":0,"m":100,"s":1,"o":"TCGA","g":[0,1,2,3],"d":"Chooses the teeth inside the mouth: 0 = none, 1 = flat band, 2 = one triangle, 3 = row of spikes. 3 also makes the animal a carnivore.","x":126,"a":{"l":{"0":"None","1":"Flat","2":"Fangs","3":"Carnivore"},"t":"Value 3 marks the creature a carnivore and gives it a white toe."}},{"i":127,"n":"HAS_MOUTH","h":12,"p":1,"m":100,"s":1,"o":"TCGA","g":[1,1,0,1],"d":"0 = no mouth, cannot eat, cannot talk, cannot scream. 1 = has mouth.","x":127,"a":{"t":"Without it the mouth, jaw, tongue and upper-teeth genes do nothing."}},{"i":128,"n":"MOUTH_Y","h":12,"p":2,"m":80,"s":100,"o":"CGAT","g":[70,84,50,100],"d":"Decides how far down on the head the mouth is. If this is too high, the horse will not have a lower jaw.","x":128},{"i":129,"n":"MOUTH_SIZE","h":12,"p":3,"m":70,"s":100,"o":"CTGA","g":[20,30,10,40],"d":"How big the mouth is. Affects tongue and teeth size.","x":129,"a":{"t":"Requires HAS_MOUTH."}},{"i":130,"n":"JAW","h":12,"p":4,"m":50,"s":100,"o":"CAGT","g":[0,15,-8,-13],"d":"Extends or retracts the lower jaw. A positive jaw (extended lower jaw) makes the horse ignore the truck and truck horn.","x":130,"a":{"t":"Requires HAS_MOUTH."}},{"i":131,"n":"TEETH_UPPER","h":12,"p":5,"m":100,"s":1,"o":"GATC","g":[1,0,0,0],"d":"If TEETH_UPPER and TEETH_UPPER2 are 1, the teeth will be on the upper jaw. Otherwise teeth will be on the lower jaw.","x":131,"a":{"t":"Needs teeth (TEETH_SHAPE not 0) and TEETH_UPPER2."}},{"i":132,"n":"TEETH_UPPER2","h":12,"p":6,"m":100,"s":1,"o":"CATG","g":[1,0,0,0],"d":"If TEETH_UPPER and TEETH_UPPER2 are 1, the teeth will be on the upper jaw. Otherwise teeth will be on the lower jaw.","x":132,"a":{"t":"Needs teeth and TEETH_UPPER."}},{"i":133,"n":"TONGUE","h":1,"p":5,"m":100,"s":100,"o":"CGAT","g":[0,40,60,0],"d":"How long the tongue is. Will only show up if the horse has a mouth and has a lower jaw.","x":133,"a":{"t":"Requires HAS_MOUTH."}},{"i":134,"n":"TONGUE_SEGS","h":1,"p":6,"m":100,"s":1,"o":"ACGT","g":[0,1,2,0],"d":"How many extra segments the tongue has.","x":134,"a":{"l":{"0":"No extra links","1":"One extra link","2":"Two extra links"},"t":"Requires TONGUE above 0."}},{"i":135,"n":"NOSE_STYLE","h":12,"p":7,"m":100,"s":1,"o":"GTCA","g":[1,2,3,0],"d":"Shape of the nose: 0 = no nose, 1 = square, 2 = triangle, 3 = circle.","x":135,"a":{"l":{"0":"Rect","1":"Triangle","2":"Circle","3":"None"}}},{"i":136,"n":"NOSE_INNY","h":12,"p":8,"m":100,"s":1,"o":"GCTA","g":[0,1,0,0],"d":"0 = no effect, 1 = the nose goes into the head instead of out of the head.","x":136},{"i":137,"n":"NOSE_Y","h":12,"p":9,"m":90,"s":100,"o":"CTAG","g":[0,100,50,0],"d":"The up/down position of the nose.","x":137},{"i":138,"n":"NOSE_SIZE","h":12,"p":10,"m":70,"s":100,"o":"AGCT","g":[10,5,20,100],"d":"How big the nose is.","x":138},{"i":139,"n":"NOSE_INTERIOR","h":12,"p":11,"m":100,"s":100,"o":"ATGC","g":[0,100,50,0],"d":"How big the 'nostril' inside the nose is.","x":139},{"i":140,"n":"HAS_ANTLERS","h":13,"p":0,"m":100,"s":1,"o":"CTGA","g":[1,0,1,1],"d":"0 = No Antlers or Hats. 1 = Has antlers if HAT_EXISTS is 0, has hat if HAT_EXISTS is 1. Note that HAS_ANTLERS 1 and HAT_SIZE above 0.5 makes the horse smart, even if HIGH_INTELLECT is 0.","x":140,"a":{"t":"Required by every antler gene."}},{"i":141,"n":"ANTLER_X","h":13,"p":1,"m":100,"s":1,"o":"TGAC","g":[1,0,2,1],"d":"Where the antlers come out of the head. 0= back of the head, 1 = eye area, 2 = front of the head. A hat always comes out at the eye area.","x":141,"a":{"l":{"0":"Center (1)","1":"Left","2":"Right","3":"Center (1)"}}},{"i":142,"n":"ANTLER_W","h":13,"p":2,"m":100,"s":100,"o":"TACG","g":[15,12,8,12],"d":"How wide the first antler piece is.","x":142},{"i":143,"n":"ANTLER_H","h":13,"p":3,"m":80,"s":100,"o":"TACG","g":[65,45,100,25],"d":"How long the first antler piece is.","x":143},{"i":144,"n":"ANTLER_TAPER","h":13,"p":4,"m":100,"s":100,"o":"CGAT","g":[0,100,50,100],"d":"How much a the antler narrows from base to tip. 0 = rectangular, 1 = pointy.","x":144},{"i":145,"n":"ANTLER_POM","h":13,"p":5,"m":100,"s":100,"o":"CTGA","g":[0,150,200,100],"d":"The ball size at the tip of each antler piece.","x":145},{"i":146,"n":"ANTLER_COLOR","h":13,"p":6,"m":100,"s":1,"o":"ACGT","g":[2,8,1,3],"d":"Color of antlers, hat and body spikes (if not rounded): 0 base, 1 spot, 2 alt, 3 skin, 8 eye colour from EYE_HUE.","x":146,"a":{"l":{"0":"Coat base colour","1":"Coat spot colour","2":"Alternate colour","3":"Skin colour","8":"Eye colour"},"t":"Palette colour 8 redirects the antler colour to the eye colour."}},{"i":147,"n":"POM_COLOR","h":13,"p":7,"m":100,"s":1,"o":"GCTA","g":[2,0,1,17],"d":"The colour of the balls: 0 base, 1 spot, 2 alt, 3 skin, 8 eye colour from EYE_HUE. Only used when POM_USECOLOR is 1, otherwise every ball takes the ANTLER_COLOR.","x":147,"a":{"l":{"0":"Coat base colour","1":"Coat spot colour","2":"Alternate colour","3":"Skin colour","8":"Eye colour"},"t":"Requires POM_USECOLOR, otherwise the pom takes the antler colour."}},{"i":148,"n":"POM_USECOLOR","h":13,"p":8,"m":100,"s":1,"o":"GTAC","g":[1,0,0,0],"d":"0= balls use ANTLER_COLOR, 1= balls use POM_COLOR.","x":148,"a":{"t":"Without it the pom takes the antler colour."}},{"i":149,"n":"ANTLER_REC","h":14,"p":0,"m":100,"s":1,"o":"TAGC","g":[2,1,3,0],"d":"How deep the backward branch of the antlers grows.","x":149},{"i":150,"n":"ANTLER_REC2","h":14,"p":1,"m":100,"s":1,"o":"CTGA","g":[2,1,3,0],"d":"How deep the forward branch of the antlers grows.","x":150},{"i":151,"n":"ANTLER_FLIP","h":14,"p":2,"m":100,"s":1,"o":"TACG","g":[1,0,0,0],"d":"Flips the angles where front antlers branch out.","x":151},{"i":152,"n":"ANTLER_MOD","h":14,"p":3,"m":100,"s":1,"o":"TCAG","g":[3,2,1,3],"d":"Affects how antlers branch out.","x":152,"a":{"l":{"1":"First half of the branches","2":"Second half of the branches","3":"Every branch"}}},{"i":153,"n":"ANTLER_SCALEH","h":14,"p":4,"m":80,"s":100,"o":"GCTA","g":[100,75,40,100],"d":"Scaling of each antler's length when compared to it's parent.","x":153},{"i":154,"n":"ANTLER_SCALEW","h":14,"p":5,"m":100,"s":100,"o":"TCGA","g":[100,75,50,100],"d":"Scaling of each antler's width when compared to it's parent.","x":154},{"i":155,"n":"ANTLER_ANGLE","h":14,"p":6,"m":100,"s":1,"o":"GATC","g":[45,-45,-25,25],"d":"Affect the angles of antler branches growing from the back.","x":155},{"i":156,"n":"ANTLER_ANGLE2","h":14,"p":7,"m":100,"s":1,"o":"ACTG","g":[45,-45,90,-90],"d":"Affect the angles of antler branches growing out from the front.","x":156},{"i":157,"n":"ANTLER_ANGLE_RAND","h":14,"p":8,"m":100,"s":1,"o":"GTAC","g":[0,5,45,15],"d":"Range the antlers' angles can vary, depending on the genome hash.","x":157},{"i":158,"n":"ANTLER_T1","h":14,"p":9,"m":100,"s":100,"o":"CGAT","g":[0,100,40,25],"d":"Position where the new antlers sprout from it's back.","x":158},{"i":159,"n":"ANTLER_T2","h":14,"p":10,"m":100,"s":100,"o":"ATGC","g":[100,40,0,25],"d":"Position where the new antlers sprout from it's front.","x":159},{"i":160,"n":"HAT_EXISTS","h":15,"p":0,"m":100,"s":1,"o":"ACTG","g":[1,0,0,0],"d":"Gives a hat, if HAS_ANTLERS is also 1.","x":160,"a":{"t":"Required by every HAT_ gene."}},{"i":161,"n":"HAT_SIZE","h":15,"p":1,"m":85,"s":100,"o":"CATG","g":[60,40,100,20],"d":"Size of the hat, if HAS_ANTLERS and HAT_EXISTS are both 2. Note that HAS_ANTLERS 1 and HAT_SIZE above 0.5 makes the horse smart, even if HIGH_INTELLECT is 0.","x":161},{"i":162,"n":"HAT_RAKE","h":15,"p":2,"m":100,"s":100,"o":"AGTC","g":[0,25,-15,0],"d":"Moves the antler or hat forwards/backwards along the head.","x":162},{"i":163,"n":"HAT_ASPECT","h":15,"p":3,"m":85,"s":100,"o":"ATGC","g":[100,300,200,100],"d":"How tall the hat is compared with how wide it is.","x":163},{"i":164,"n":"HAT_TAPER","h":15,"p":4,"m":100,"s":100,"o":"TGCA","g":[0,100,50,0],"d":"How narrow the top of the hat is. 0 = rectangle, 1 = triangle.","x":164},{"i":165,"n":"HAT_POM","h":13,"p":9,"m":100,"s":100,"o":"TGAC","g":[0,25,50,0],"d":"The size of the ball on the hat.","x":165},{"i":166,"n":"HAT_POM_IS_LID","h":13,"p":10,"m":100,"s":1,"o":"TAGC","g":[0,1,0,0],"d":"When HAT_POM is > 0, will change the hat ball to match the size of the top flat surface of the hat.","x":166,"a":{"t":"Requires HAT_POM above 0."}},{"i":167,"n":"HAT_CLONE","h":15,"p":5,"m":100,"s":100,"o":"CGTA","g":[0,33,66,0],"d":"When above 0, a 2nd hat will show up with the HAT_CLONE distance apart. No effect if hat is fully rectangular (HAT_TAPER 0).","x":167,"a":{"t":"Needs HAT_TAPER above 0.1."}},{"i":168,"n":"HAT_BACK_SCALE","h":15,"p":6,"m":100,"s":100,"o":"TAGC","g":[100,0,60,100],"d":"Scale the hat's backward branch.","x":168},{"i":169,"n":"HAT_FRONT_SCALE","h":15,"p":7,"m":100,"s":100,"o":"CGTA","g":[100,0,60,100],"d":"Scale the hat's forward branch.","x":169},{"i":170,"n":"HAT_BACK_ANGLE","h":15,"p":8,"m":75,"s":1,"o":"ACGT","g":[45,90,120,60],"d":"Angle where the hat's backward branches leans, in degrees.","x":170},{"i":171,"n":"HAT_FRONT_ANGLE","h":15,"p":9,"m":100,"s":1,"o":"CGAT","g":[-45,-90,-120,-60],"d":"Angle where the hat's forward branches leans, in degrees.","x":171},{"i":172,"n":"HAT_ANGLE_RAND","h":15,"p":10,"m":100,"s":1,"o":"TCGA","g":[0,15,45,15],"d":"The range where randomness from the genome will affect the hat angles. No effect at 0.","x":172},{"i":173,"n":"HAT_FLIP","h":15,"p":11,"m":100,"s":1,"o":"TACG","g":[0,1,0,0],"d":"Flips the font/back of the hat.","x":173},{"i":174,"n":"HAT_T","h":15,"p":12,"m":100,"s":100,"o":"GTAC","g":[0,100,40,0],"d":"Affect where position on the hat where branches grow out from. 1 = top of hat, 0 = base of hat.","x":174},{"i":175,"n":"BASE_BROWN","h":16,"p":0,"m":100,"s":1,"o":"ATCG","g":[0,1,2,0],"d":"Only when BASE_GREEN and BASE_RED are 0; 0 is the usual skin tone. 1 and 2 give the two darker brown shades. Also affects spot color.","x":175,"a":{"l":{"0":"Default (0)","1":"Warm Brown","2":"Dark Brown","3":"Default (0)"},"c":{"0":"#d6922c","1":"#7a3f00","2":"#47310f","3":"#d6922c"},"t":"Only used when BASE_GREEN is 0 and BASE_RED is 0."}},{"i":176,"n":"BASE_BLACK","h":16,"p":1,"m":100,"s":1,"o":"TGCA","g":[0,1,0,1],"d":"When exactly 1 it swaps the base and alternate colours on every part except the torso. The torso will take alternate colors only when there are patterns on the torso.","x":176,"a":{"t":"With AGOUTI 1 the horse is bay (coloured body, black points) instead of fully black."}},{"i":177,"n":"BASE_RED","h":16,"p":2,"m":100,"s":1,"o":"GTCA","g":[0,1,2,3],"d":"Affects base color together with BASE_GREEN. Also affects spot color. Overrides BASE_BROWN.","x":177,"a":{"l":{"0":"None","1":"Red","2":"Magenta","3":"Crimson"},"c":{"0":"#d6922c","1":"#e83a57","2":"#db30a2","3":"#c93c59"},"t":"No effect when BASE_GREEN is 3."}},{"i":178,"n":"BASE_GREEN","h":16,"p":3,"m":70,"s":1,"o":"TCAG","g":[0,1,2,3],"d":"Affects base color together with BASE_RED. Also affects spot color. Overrides BASE_BROWN.","x":178,"a":{"l":{"0":"None","1":"Yellow-Green","2":"Green","3":"Dark Green"},"c":{"0":"#d6922c","1":"#b0a207","2":"#36e345","3":"#1c570b"}}},{"i":179,"n":"GREEN_KNOCKOUT","h":16,"p":4,"m":100,"s":1,"o":"CAGT","g":[0,1,0,0],"d":"When exactly 1 it forces BASE_GREEN to 0.","x":179,"a":{"t":"Needs a non-zero BASE_GREEN; it knocks the green out to 0."}},{"i":180,"n":"BASE_CREAM","h":16,"p":5,"m":50,"s":100,"o":"AGCT","g":[0,100,0,0],"d":"Applies a lighter shade to the base color.","x":180,"a":{"t":"Overridden by the white coat."}},{"i":181,"n":"ALT_BLUE","h":16,"p":6,"m":100,"s":1,"o":"TAGC","g":[0,1,2,3],"d":"0 and 1 = alt color is black, 2 gives blue and 3 gives green.","x":181,"a":{"l":{"0":"Black (0)","1":"Black (1)","2":"Blue","3":"Green"},"c":{"0":"#110b03","1":"#110b03","2":"#30a2db","3":"#36e345"}}},{"i":182,"n":"SPOT_YELLOW","h":16,"p":7,"m":100,"s":1,"o":"TGCA","g":[0,1,0,1],"d":"Any value above 0 forces the spot colour to yellow, except that when the base colour is already that same yellow the spots fall back to a dark brown.","x":182},{"i":183,"n":"SKIN_HUE","h":16,"p":8,"m":100,"s":1,"o":"CGAT","g":[0,1,2,3],"d":"Affects skin color together with SKIN_HUE2","x":183,"a":{"l":{"0":"0","1":"1","2":"2","3":"3"},"c":{"0":"#c3c6c9","1":"#ffa799","2":"#8f3636","3":"#82d7ff"}}},{"i":184,"n":"SKIN_HUE2","h":16,"p":9,"m":100,"s":1,"o":"TAGC","g":[0,1,2,3],"d":"Affects skin color together with SKIN_HUE","x":184,"a":{"l":{"0":"0","1":"1","2":"2","3":"3"},"c":{"0":"#c3c6c9","1":"#ffa799","2":"#8f3636","3":"#82d7ff"}}},{"i":185,"n":"SWAP_BASE_SPOT","h":16,"p":10,"m":100,"s":1,"o":"ATCG","g":[0,1,0,1],"d":"Swaps base and spot colors.","x":185},{"i":186,"n":"SWAP_ALT_SPOT","h":16,"p":11,"m":100,"s":1,"o":"TGCA","g":[0,1,0,1],"d":"Swaps alt and spot colors, but only when SWAP_BASE_SPOT is 0.","x":186,"a":{"t":"Overridden while SWAP_BASE_SPOT is on."}},{"i":187,"n":"WHITE","h":16,"p":12,"m":100,"s":1,"o":"TAGC","g":[1,0,0,0],"d":"0 is off. 1 replaces the base colour with a light grey and leaves the spot and alternate colours alone.","x":187,"a":{"t":"Value 1 is the white coat; with WHITE_IS_LETHAL it is a lethal white."}},{"i":188,"n":"WHITE_IS_LETHAL","h":5,"p":7,"m":100,"s":1,"o":"AGCT","g":[0,1,0,0],"d":"When WHITE is 1, it replaces the spot and alt colors with the same light grey. It will also makes the animal fall apart at the start of a race. No effect if WHITE is 0.","x":188,"a":{"t":"Needs the white coat (WHITE 1) to do anything."}},{"i":189,"n":"EYE_HUE","h":11,"p":7,"m":100,"s":1,"o":"GCTA","g":[36,237,153,198],"d":"Pupil color. 36 = amber, 237 = blue, 153 = green, 198 = cyan.","x":189,"a":{"l":{"0":"Amber","1":"Blue","2":"Green","3":"Cyan"},"c":{"0":"#d6ab6b","1":"#6b70d6","2":"#6bd6a6","3":"#6bb6d6"},"t":"Needs a pupil to colour."}},{"i":190,"n":"NOSE_HUE","h":16,"p":13,"m":100,"s":1,"o":"GACT","g":[0,1,2,3],"d":"Nose color: 0=black, 1=skin, 2=alt 3=base.","x":190,"a":{"l":{"0":"Black","1":"Skin","2":"Alt","3":"Base"},"c":{"0":"#110b03"}}},{"i":191,"n":"HOOF_COLOR","h":16,"p":14,"m":100,"s":1,"o":"CTAG","g":[0,1,2,0],"d":"Hoof color: 0 and 1 give brown, 2 gives black and 3 gives blue. Only has effect when when FOOT_IS_HOOF is 1.","x":191,"a":{"l":{"0":"Brown (0)","1":"Brown (1)","2":"Black","3":"Blue"},"c":{"0":"#47310f","1":"#47310f","2":"#110b03","3":"#4661e8"}}},{"i":192,"n":"AGOUTI","h":17,"p":0,"m":100,"s":1,"o":"ATGC","g":[1,0,0,1],"d":"With BASE_BLACK 1, only the lower legs, tail and muzzle go black. If it is AA, only lower leg and tails go black. Does not work without BASE_BLACK.","x":192,"a":{"t":"Requires BASE_BLACK 1; with it the horse is bay."}},{"i":193,"n":"BELLY_ALT","h":1,"p":7,"m":100,"s":1,"o":"TACG","g":[0,1,2,1],"d":"Value 1 puts the upper limb, hand and foot on the alternate colour and value 2 on the spot colour, overwriting the blackening gene, and it also moves the pattern's solid belly band onto the alternate colour. It is only the starting point, because the skin hands and foot-is-hoof genes are applied after it.","x":193,"a":{"l":{"0":"None","1":"Alt (1)","2":"Spot","3":"Alt (1)"}}},{"i":194,"n":"SKIN_HEAD","h":10,"p":12,"m":100,"s":1,"o":"GCAT","g":[0,1,0,2],"d":"Sets which parts uses skin color instad of base. 0 = off, 1 = head only, 2 = neck and torso*. 2 only applies skin color torso if there are patterns on the torso.","x":194,"a":{"l":{"0":"Head in coat colour","1":"Head on skin","2":"Head and neck on skin"}}},{"i":195,"n":"SKIN_HANDS","h":9,"p":10,"m":100,"s":1,"o":"GCAT","g":[0,1,0,2],"d":"Sets which parts uses skin color instad of base. 0 = off, 1 = hands only, 2 = all limbs.","x":195,"a":{"l":{"0":"Hands in coat colour","1":"Hands on skin","2":"Whole limbs on skin"}}},{"i":196,"n":"FOOT_IS_HOOF","h":17,"p":1,"m":100,"s":1,"o":"GACT","g":[0,1,0,1],"d":"Uses hoof color instead of leg color for foot.","x":196},{"i":197,"n":"RACCOON_EYE","h":17,"p":2,"m":100,"s":1,"o":"GCAT","g":[0,1,2,0],"d":"0=off, 1=spot?, 2=alt?","x":197,"a":{"l":{"0":"None (0)","1":"Spot","2":"Alt","3":"None (0)"},"t":"Overridden by Bugeye 2."}},{"i":198,"n":"EAR_COMP","h":17,"p":3,"m":100,"s":1,"o":"GTCA","g":[0,0,2,1],"d":"The ears' color: 0=base?, 1=alt, 2=spot. Might be affected by SKIN_HEAD and EAR_STYLE","x":198,"a":{"l":{"0":"None (0)","1":"None (0)","2":"Alt","3":"Spot"}}},{"i":199,"n":"TAIL_ALT","h":17,"p":4,"m":100,"s":1,"o":"CGTA","g":[0,1,2,0],"d":"Sets the tail's colour. 0 is base?, 1 is the spot color, and 2 is the alt color. SKIN_HANDS 2 will override this.","x":199,"a":{"l":{"0":"Inherit (0)","1":"Spot","2":"Alt","3":"Inherit (0)"}}},{"i":200,"n":"PAT_SPLIT","h":17,"p":5,"m":100,"s":100,"o":"CGAT","g":[0,100,65,0],"d":"0=off, otherwise sets the position for a left/right color split (alt).","x":200},{"i":201,"n":"PAT_BELLY","h":1,"p":8,"m":100,"s":100,"o":"ACTG","g":[100,50,33,75],"d":"1=off, otherwise sets the position for a top/bottom color split (alt).","x":201},{"i":202,"n":"PAT_STRIPE","h":17,"p":6,"m":100,"s":100,"o":"CTAG","g":[0,90,51,0],"d":"Adds striped pattern with the spot colour.","x":202},{"i":203,"n":"PAT_SPOT","h":17,"p":7,"m":100,"s":100,"o":"ACGT","g":[0,90,51,0],"d":"Changes striped pattern to spotted patterns. No effect if PAT_STRIPE i 0.","x":203,"a":{"t":"Requires PAT_STRIPE above 0: spots are driven by the stripe field."}},{"i":204,"n":"PAT_PERLIN","h":17,"p":8,"m":100,"s":100,"o":"TCAG","g":[0,100,60,0],"d":"Perlin noise pattern using spot color.","x":204},{"i":205,"n":"PAT_PERLIN2","h":17,"p":9,"m":100,"s":100,"o":"GTCA","g":[0,100,60,0],"d":"Perlin noise pattern using alt color.","x":205},{"i":206,"n":"PAT_PERLIN_SIZE","h":17,"p":10,"m":100,"s":1,"o":"GACT","g":[8,2,4,4],"d":"Sets how large the perlin pattern blocks are. Bigger values give coarser blocks.","x":206},{"i":207,"n":"RAMPAGE","h":18,"p":3,"m":100,"s":1,"o":"GATC","g":[0,0,0,1],"d":"Carnivores (Sharp teeth) with RAMPAGE will hunt all the time.","x":207},{"i":208,"n":"SPINAL_LOCO","h":18,"p":4,"m":100,"s":1,"o":"CTGA","g":[0,1,0,2],"d":"0=no effect, 1=early start?, 2=moves faster?","x":208,"a":{"l":{"0":"Off","1":"Always on (false starts)","2":"Fast legs (x2 speed, half stamina)"}}},{"i":209,"n":"BRAIN_SPASTIC","h":2,"p":12,"m":100,"s":1,"o":"TGAC","g":[0,1,2,0],"d":"0=no effect, 1 = make horse twitchy, 2 = horse randomly pauses.","x":209,"a":{"t":"Read from the raw allele columns, not the blended value: column 1 twitches, column 2 pauses, both give twitches and pauses."}},{"i":210,"n":"HIGH_INTELLECT","h":18,"p":5,"m":100,"s":1,"o":"CTAG","g":[0,1,0,1],"d":"Value 1 makes the horse smart, and may refuse to start a race.","x":210},{"i":211,"n":"OMNIVORE","h":1,"p":11,"m":100,"s":1,"o":"CATG","g":[0,1,0,0],"d":"Makes the horse an omnivores. Diet also affect breeding partners.","x":211,"a":{"t":"Diet trait; interacts with TEETH_SHAPE 3 (obligate carnivore)."}},{"i":212,"n":"LITTER_SIZE","h":1,"p":9,"m":100,"s":1,"o":"CTAG","g":[1,2,3,5],"d":"Number of foals created when the horse breeds. It will use the lower number of the 2 parents.","x":212,"a":{"t":"Behaviour: litter size."}},{"i":213,"n":"OLD_AGE","h":1,"p":10,"m":100,"s":1,"o":"TACG","g":[0,0,-1,2],"d":"The animal's lifespan is 9, this adds or remove from that.","x":213,"a":{"t":"The displayed lifespan is OLD_AGE + 9, so 11 means 20."}},{"i":214,"n":"LIMP","h":1,"p":12,"m":100,"s":1,"o":"AGTC","g":[0,1,0,2],"d":"0 = no effect, 1 = horse limbs are limp and cannot move on their own, 2 = floppy foot.","x":214,"a":{"l":{"0":"None","1":"Cannot run","2":"Limp foot"}}},{"i":215,"n":"NARCOLEPSY","h":18,"p":0,"m":100,"s":1,"o":"TCGA","g":[0,0,1,0],"d":"Narcoleptic horses will fall asleep randomly.","x":215},{"i":216,"n":"FLU_IMMUNITY","h":12,"p":12,"m":100,"s":1,"o":"CATG","g":[0,0,0,1],"d":"Makes the horse immue to horse flu. Cures horse flu on affected horses.","x":216},{"i":217,"n":"TAIL_WAG","h":7,"p":7,"m":100,"s":1,"o":"CTGA","g":[1,0,0,0],"d":"Makes the horse wag its tail when you pat it.","x":217},{"i":218,"n":"STIFF_JOINTS","h":3,"p":14,"m":100,"s":100,"o":"CGAT","g":[0,18,50,0],"d":"Scales how far the tail, the legs, the front and both upper arms and the neck may swing. A larger value shrinks the range each joint can move through.","x":218},{"i":219,"n":"L_LEG_SIGNAL","h":18,"p":6,"m":100,"s":1,"o":"GTCA","g":[1,1,1,2],"d":"Chooses which channel the gene's part broascast event on.","x":219},{"i":220,"n":"L_LEG_FTOB_REACT","h":19,"p":0,"m":100,"s":1,"o":"TCAG","g":[1,2,1,3],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction.","x":220},{"i":221,"n":"L_LEG_FTOB_EVENT","h":19,"p":1,"m":100,"s":1,"o":"GATC","g":[3,1,2,4],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction.","x":221},{"i":222,"n":"L_LEG_BTOF_REACT","h":19,"p":2,"m":100,"s":1,"o":"ACGT","g":[2,1,2,3],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction.","x":222},{"i":223,"n":"L_LEG_BTOF_EVENT","h":19,"p":3,"m":100,"s":1,"o":"TGAC","g":[2,3,1,4],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction.","x":223},{"i":224,"n":"L_ARM_SIGNAL","h":18,"p":7,"m":100,"s":1,"o":"CGAT","g":[2,2,2,1],"d":"Chooses which channel the gene's part broascast event on.","x":224},{"i":225,"n":"L_ARM_FTOB_REACT","h":19,"p":4,"m":100,"s":1,"o":"ACGT","g":[2,1,2,3],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction.","x":225},{"i":226,"n":"L_ARM_FTOB_EVENT","h":19,"p":5,"m":100,"s":1,"o":"TGAC","g":[3,1,2,4],"d":"If the event in the L_ARM_FTOB_REACT channel, that will trigger the specific movement in the part based on the gene. 1=front, 2=back, 3=touch, 4=timed.","x":226},{"i":227,"n":"L_ARM_BTOF_REACT","h":19,"p":6,"m":100,"s":1,"o":"GATC","g":[1,2,1,3],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction.","x":227},{"i":228,"n":"L_ARM_BTOF_EVENT","h":19,"p":7,"m":100,"s":1,"o":"CATG","g":[2,3,1,4],"d":"If the event in the L_ARM_BTOF_REACT channel, that will trigger the specific movement in the part based on the gene. 1=front, 2=back, 3=touch, 4=timed.","x":228},{"i":229,"n":"L_TAIL_SIGNAL","h":18,"p":8,"m":100,"s":1,"o":"ACTG","g":[3,1,2,4],"d":"Chooses which channel the gene's part broascast event on.","x":229},{"i":230,"n":"L_TAIL_FTOB_REACT","h":19,"p":8,"m":100,"s":1,"o":"CGAT","g":[0,1,3,2],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction. 0 means it does not listen on any channel, and hence will not trigger the movement.","x":230},{"i":231,"n":"L_TAIL_FTOB_EVENT","h":19,"p":9,"m":100,"s":1,"o":"TCGA","g":[1,2,3,4],"d":"If the event in the L_TAIL_FTOB_REACT channel, that will trigger the specific movement in the part based on the gene. 1=front, 2=back, 3=touch, 4=timed.","x":231},{"i":232,"n":"L_TAIL_BTOF_REACT","h":19,"p":10,"m":100,"s":1,"o":"GTCA","g":[0,1,3,2],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction. 0 means it does not listen on any channel, and hence will not trigger the movement.","x":232},{"i":233,"n":"L_TAIL_BTOF_EVENT","h":19,"p":11,"m":100,"s":1,"o":"ATCG","g":[2,1,3,4],"d":"If the event in the L_TAIL_BTOF_REACT channel, that will trigger the specific movement in the part based on the gene. 1=front, 2=back, 3=touch, 4=timed.","x":233},{"i":234,"n":"L_NECK_SIGNAL","h":18,"p":9,"m":100,"s":1,"o":"TGAC","g":[4,1,2,3],"d":"Chooses which channel the gene's part broascast event on.","x":234},{"i":235,"n":"L_NECK_FTOB_REACT","h":19,"p":12,"m":100,"s":1,"o":"GTAC","g":[0,1,4,2],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction. 0 means it does not listen on any channel, and hence will not trigger the movement.","x":235},{"i":236,"n":"L_NECK_FTOB_EVENT","h":19,"p":13,"m":100,"s":1,"o":"CATG","g":[1,2,3,4],"d":"If the event in the L_NECK_FTOB_REACT channel, that will trigger the specific movement in the part based on the gene. 1=front, 2=back, 3=touch, 4=timed.","x":236},{"i":237,"n":"L_NECK_BTOF_REACT","h":19,"p":14,"m":100,"s":1,"o":"TCAG","g":[0,1,4,2],"d":"The channel the gene's part watches before triggering movement in the direction gene's direction. 0 means it does not listen on any channel, and hence will not trigger the movement.","x":237},{"i":238,"n":"L_NECK_BTOF_EVENT","h":19,"p":15,"m":100,"s":1,"o":"TCAG","g":[2,1,3,4],"d":"If the event in the L_NECK_BTOF_REACT channel, that will trigger the specific movement in the part based on the gene. 1=front, 2=back, 3=touch, 4=timed.","x":238},{"i":239,"n":"LOCO_SYNC","h":18,"p":10,"m":100,"s":1,"o":"CTGA","g":[0,1,0,0],"d":"1 = Limbs will wait for each other before moving in the other direction.","x":239}],"mat":[[100,97,96,98,97,50,49,51,96,49,35,37,98,51,37,75],[200,205,197,202,205,310,302,307,197,302,150,155,202,307,155,250],[100,100,100,100,100,200,200,200,100,200,100,100,100,200,100,75],[0,0,0,0,0,-14,-12,-13,0,-12,14,13,0,-13,13,0],[0,6,-6,0,6,16,3,9,-6,3,-16,-9,0,9,-9,0],[104,104,104,104,104,102,102,102,104,102,108,108,104,102,108,102],[95,95,95,95,95,100,100,100,95,100,90,90,95,100,90,95],[100,100,100,100,100,66,66,66,100,66,133,133,100,66,133,100],[100,100,100,100,100,50,50,50,100,50,80,80,100,50,80,100],[1,1,1,1,1,0,0,0,1,0,1,1,1,0,1,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[0,0,0,0,0,10,10,10,0,10,-5,-5,0,10,-5,45],[0,9,3,0,9,18,12,9,3,12,6,3,0,9,3,0],[0,0,0,0,0,13,13,13,0,13,0,0,0,13,0,1],[0,0,0,0,0,25,25,25,0,25,45,45,0,25,45,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,2],[1,1,1,1,1,0,0,0,1,0,1,1,1,0,1,2],[30,27,32,32,27,15,19,19,32,19,45,45,32,19,45,45],[0,6,10,1,6,40,44,35,10,44,70,61,1,35,61,10],[100,82,87,108,82,30,35,55,87,35,50,70,108,55,70,133],[0,0,0,0,0,54,54,54,0,54,0,0,0,54,0,35],[3,3,3,3,3,4,4,4,3,4,2,2,3,4,2,1],[1,1,1,1,1,0,0,0,1,0,1,1,1,0,1,2],[100,92,108,116,92,80,96,104,108,96,120,128,116,104,128,140],[100,100,100,100,100,50,50,50,100,50,35,35,100,50,35,100],[20,19,21,23,19,10,12,14,21,12,30,32,23,14,32,50],[45,45,45,45,45,90,90,90,45,90,135,135,45,90,135,60],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[60,60,60,60,60,200,200,200,60,200,60,60,60,200,60,0],[135,135,135,135,135,90,90,90,135,90,45,45,135,90,45,15],[2,2,2,2,2,1,1,1,2,1,5,5,2,1,5,6],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[3,3,3,3,3,0,0,0,3,0,3,3,3,0,3,5],[1,1,1,1,1,2,2,2,1,2,4,4,1,2,4,3],[1,1,1,1,1,2,2,2,1,2,0,0,1,2,0,1],[80,77,84,82,77,50,57,55,84,57,120,118,82,55,118,100],[0,5,-5,0,5,14,2,8,-5,2,-14,-8,0,8,-8,0],[0,0,0,0,0,-16,-16,-16,0,-16,16,16,0,-16,16,0],[95,105,89,98,105,120,104,113,89,104,80,89,98,113,89,104],[1,1,1,1,1,1,1,1,1,1,0,0,1,1,0,0],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,0],[30,28,32,34,28,20,24,26,32,24,40,42,34,26,42,50],[15,15,15,15,15,20,20,20,15,20,10,10,15,20,10,-10],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,2],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[1,1,1,1,1,1,1,1,1,1,2,2,1,1,2,7],[0,9,-6,0,9,24,8,14,-6,8,-16,-9,0,14,-9,0],[0,0,0,0,0,10,10,10,0,10,0,0,0,10,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[0,0,0,0,0,-90,-90,-90,0,-90,-15,-15,0,-90,-15,0],[20,20,20,20,20,90,90,90,20,90,45,45,20,90,45,20],[1,1,1,1,1,2,2,2,1,2,4,4,1,2,4,3],[1,1,1,1,1,2,2,2,1,2,0,0,1,2,0,0],[80,77,84,74,77,50,57,47,84,57,120,110,74,47,110,25],[0,5,-5,0,5,14,2,8,-5,2,-14,-8,0,8,-8,0],[0,0,0,0,0,-16,-16,-16,0,-16,16,16,0,-16,16,0],[95,105,89,98,105,120,104,113,89,104,80,89,98,113,89,104],[1,1,1,1,1,0,0,0,1,0,1,1,1,0,1,0],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,0],[30,30,30,30,30,20,20,20,30,20,40,40,30,20,40,30],[15,15,15,15,15,20,20,20,15,20,10,10,15,20,10,0],[-20,-20,-20,-20,-20,0,0,0,-20,0,60,60,-20,0,60,40],[0,0,0,0,0,20,20,20,0,20,-20,-20,0,20,-20,0],[100,85,115,100,85,70,100,85,115,100,130,115,100,85,115,100],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[30,30,30,30,30,90,90,90,30,90,10,10,30,90,10,30],[0,0,0,0,0,2,2,2,0,2,1,1,0,2,1,4],[30,26,30,34,26,10,14,18,30,14,30,34,34,18,34,50],[0,0,0,0,0,30,30,30,0,30,-30,-30,0,30,-30,-45],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,3],[4,4,4,4,4,3,3,3,4,3,1,1,4,3,1,2],[1,1,1,1,1,1,1,1,1,1,2,2,1,1,2,0],[60,61,63,57,61,70,72,66,63,72,90,84,57,66,84,30],[110,99,107,111,99,0,8,12,107,8,85,88,111,12,88,120],[95,101,105,89,101,110,114,98,105,114,120,104,89,98,104,80],[45,43,46,48,43,30,33,34,46,33,60,61,48,34,61,75],[0,0,0,0,0,30,30,30,0,30,20,20,0,30,20,-25],[1,1,1,1,1,0,0,0,1,0,2,2,1,0,2,0],[23,23,23,23,23,10,10,10,23,10,40,40,23,10,40,0],[-8,-8,-8,-8,-8,0,0,0,-8,0,-25,-25,-8,0,-25,30],[0,20,8,0,20,50,38,30,8,38,20,12,0,30,12,0],[0,0,0,0,0,50,50,50,0,50,70,70,0,50,70,20],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[60,60,60,60,60,25,25,25,60,25,50,50,60,25,50,10],[1,1,1,1,1,0,0,0,1,0,1,1,1,0,1,0],[0,8,4,12,8,20,16,24,4,16,12,19,12,24,19,30],[0,0,0,0,0,30,30,30,0,30,0,0,0,30,0,0],[20,19,22,17,19,15,18,13,22,18,30,25,17,13,25,7],[100,100,100,100,100,0,0,0,100,0,50,50,100,0,50,100],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,2],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[0,0,0,0,0,7,7,7,0,7,20,20,0,7,20,0],[20,21,19,20,21,30,28,29,19,28,15,15,20,29,15,20],[0,20,0,10,20,100,80,90,0,80,0,10,10,90,10,50],[100,97,101,98,97,50,54,51,101,54,133,130,98,51,130,75],[0,0,0,0,0,20,20,20,0,20,0,0,0,20,0,0],[0,0,0,0,0,5,5,5,0,5,10,10,0,5,10,-5],[0,0,0,0,0,5,5,5,0,5,-5,-5,0,5,-5,0],[200,196,207,215,196,175,186,193,207,186,250,257,215,193,257,300],[0,0,0,0,0,150,150,150,0,150,100,100,0,150,100,0],[11,11,11,11,11,0,0,0,11,0,0,0,11,0,0,1],[100,110,108,100,110,200,198,190,108,198,180,172,100,190,172,100],[100,97,95,100,97,70,68,73,95,68,50,55,100,73,55,100],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[1,1,1,1,1,2,2,2,1,2,1,1,1,2,1,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,2],[33,29,34,31,29,0,5,1,34,5,50,46,31,1,46,15],[-100,-100,-100,-100,-100,0,0,0,-100,0,-50,-50,-100,0,-50,-25],[25,21,28,35,21,15,22,29,28,22,33,39,35,29,39,50],[50,50,50,50,50,75,75,75,50,75,125,125,50,75,125,50],[66,66,66,66,66,80,80,80,66,80,40,40,66,80,40,40],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,0],[0,0,0,0,0,150,150,150,0,150,125,125,0,150,125,0],[0,0,0,0,0,-15,-15,-15,0,-15,15,15,0,-15,15,0],[1,1,1,1,1,2,2,2,1,2,0,0,1,2,0,0],[2,2,2,2,2,1,1,1,2,1,4,4,2,1,4,2],[0,0,0,0,0,30,30,30,0,30,60,60,0,30,60,200],[0,10,5,0,10,100,95,90,5,95,50,45,0,90,45,0],[20,23,17,26,23,30,24,33,17,24,10,19,26,33,19,40],[100,100,100,100,100,250,250,250,100,250,300,300,100,250,300,100],[0,30,15,-9,30,100,85,60,15,85,50,25,-9,60,25,-33],[5,5,5,5,5,0,0,0,5,0,0,0,5,0,0,0],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,3],[1,1,1,1,1,1,1,1,1,1,0,0,1,1,0,1],[70,72,66,76,72,84,77,87,66,77,50,60,76,87,60,100],[20,23,17,26,23,30,24,33,17,24,10,19,26,33,19,40],[0,7,-4,-6,7,15,3,1,-4,3,-8,-10,-6,1,-10,-13],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,0],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,0],[0,0,0,0,0,40,40,40,0,40,60,60,0,40,60,0],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,0],[1,1,1,1,1,2,2,2,1,2,3,3,1,2,3,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[0,10,5,0,10,100,95,90,5,95,50,45,0,90,45,0],[10,8,13,37,8,5,9,33,13,9,20,44,37,33,44,100],[0,0,0,0,0,100,100,100,0,100,50,50,0,100,50,0],[1,1,1,1,1,0,0,0,1,0,1,1,1,0,1,1],[1,1,1,1,1,0,0,0,1,0,2,2,1,0,2,1],[15,15,15,15,15,12,12,12,15,12,8,8,15,12,8,12],[65,61,72,57,61,45,56,41,72,56,100,85,57,41,85,25],[0,0,0,0,0,100,100,100,0,100,50,50,0,100,50,100],[0,0,0,0,0,150,150,150,0,150,200,200,0,150,200,100],[2,2,2,2,2,8,8,8,2,8,1,1,2,8,1,3],[2,2,2,2,2,0,0,0,2,0,1,1,2,0,1,17],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,0],[2,2,2,2,2,1,1,1,2,1,3,3,2,1,3,0],[2,2,2,2,2,1,1,1,2,1,3,3,2,1,3,0],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,0],[3,3,3,3,3,2,2,2,3,2,1,1,3,2,1,3],[100,95,88,100,95,75,68,80,88,68,40,52,100,80,52,100],[100,100,100,100,100,75,75,75,100,75,50,50,100,75,50,100],[45,45,45,45,45,-45,-45,-45,45,-45,-25,-25,45,-45,-25,25],[45,45,45,45,45,-45,-45,-45,45,-45,90,90,45,-45,90,-90],[0,0,0,0,0,5,5,5,0,5,45,45,0,5,45,15],[0,0,0,0,0,100,100,100,0,100,40,40,0,100,40,25],[100,100,100,100,100,40,40,40,100,40,0,0,100,40,0,25],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,0],[60,57,66,54,57,40,49,37,66,49,100,88,54,37,88,20],[0,0,0,0,0,25,25,25,0,25,-15,-15,0,25,-15,0],[100,130,115,100,130,300,285,270,115,285,200,185,100,270,185,100],[0,0,0,0,0,100,100,100,0,100,50,50,0,100,50,0],[0,0,0,0,0,25,25,25,0,25,50,50,0,25,50,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[0,0,0,0,0,33,33,33,0,33,66,66,0,33,66,0],[100,100,100,100,100,0,0,0,100,0,60,60,100,0,60,100],[100,100,100,100,100,0,0,0,100,0,60,60,100,0,60,100],[45,56,63,48,56,90,97,82,63,97,120,105,48,82,105,60],[-45,-45,-45,-45,-45,-90,-90,-90,-45,-90,-120,-120,-45,-90,-120,-60],[0,0,0,0,0,15,15,15,0,15,45,45,0,15,45,15],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[0,0,0,0,0,100,100,100,0,100,40,40,0,100,40,0],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,3],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,3],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[0,50,0,0,50,100,50,50,0,50,0,0,0,50,0,0],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,3],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,3],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,3],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[36,36,36,36,36,237,237,237,36,237,153,153,36,237,153,198],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,3],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,0],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,1],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,1],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,2],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,2],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,0],[0,0,0,0,0,0,0,0,0,0,2,2,0,0,2,1],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,0],[0,0,0,0,0,100,100,100,0,100,65,65,0,100,65,0],[100,100,100,100,100,50,50,50,100,50,33,33,100,50,33,75],[0,0,0,0,0,90,90,90,0,90,51,51,0,90,51,0],[0,0,0,0,0,90,90,90,0,90,51,51,0,90,51,0],[0,0,0,0,0,100,100,100,0,100,60,60,0,100,60,0],[0,0,0,0,0,100,100,100,0,100,60,60,0,100,60,0],[8,8,8,8,8,2,2,2,8,2,4,4,8,2,4,4],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,2],[0,0,0,0,0,1,1,1,0,1,2,2,0,1,2,0],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,1],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0],[1,1,1,1,1,2,2,2,1,2,3,3,1,2,3,5],[0,0,0,0,0,0,0,0,0,0,-1,-1,0,0,-1,2],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,2],[0,0,0,0,0,0,0,0,0,0,1,1,0,0,1,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,1,1,1,1,0,0,0,1,0,0,0,1,0,0,0],[0,0,0,0,0,18,18,18,0,18,50,50,0,18,50,0],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2],[1,1,1,1,1,2,2,2,1,2,1,1,1,2,1,3],[3,3,3,3,3,1,1,1,3,1,2,2,3,1,2,4],[2,2,2,2,2,1,1,1,2,1,2,2,2,1,2,3],[2,2,2,2,2,3,3,3,2,3,1,1,2,3,1,4],[2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1],[2,2,2,2,2,1,1,1,2,1,2,2,2,1,2,3],[3,3,3,3,3,1,1,1,3,1,2,2,3,1,2,4],[1,1,1,1,1,2,2,2,1,2,1,1,1,2,1,3],[2,2,2,2,2,3,3,3,2,3,1,1,2,3,1,4],[3,3,3,3,3,1,1,1,3,1,2,2,3,1,2,4],[0,0,0,0,0,1,1,1,0,1,3,3,0,1,3,2],[1,1,1,1,1,2,2,2,1,2,3,3,1,2,3,4],[0,0,0,0,0,1,1,1,0,1,3,3,0,1,3,2],[2,2,2,2,2,1,1,1,2,1,3,3,2,1,3,4],[4,4,4,4,4,1,1,1,4,1,2,2,4,1,2,3],[0,0,0,0,0,1,1,1,0,1,4,4,0,1,4,2],[1,1,1,1,1,2,2,2,1,2,3,3,1,2,3,4],[0,0,0,0,0,1,1,1,0,1,4,4,0,1,4,2],[2,2,2,2,2,1,1,1,2,1,3,3,2,1,3,4],[0,0,0,0,0,1,1,1,0,1,0,0,0,1,0,0]],"helixLengths":[10,13,13,15,11,8,11,8,11,11,13,15,13,11,11,13,15,11,11,16]};
+const MAT = DATA.mat;
+
+const BASE_COLORS = ['#1f6f3f', '#1d4f7a', '#8a5a1f', '#7a2f2a'];
+
+/* ------------------------------- state ------------------------------- */
+let query = '';
+let sortKey = 'h';         /* the default view is genome order: helix by helix, position by position */
+let sortDir = 1;
+let annotationsOn = true;   /* every column names its discrete values; the toggle was removed */
+let colWidth = {};          /* per-column width in px, set by dragging a header edge */
+try { colWidth = JSON.parse(localStorage.getItem('geneTableColWidths') || '{}') || {}; } catch (e) { colWidth = {}; }
+function saveColWidths() {
+  try { localStorage.setItem('geneTableColWidths', JSON.stringify(colWidth)); } catch (e) { /* private mode */ }
+}
+
+/* ------------------------------ columns ------------------------------ */
+/* Description last: the numbers read as one block, and the wide text column does not push the
+   values off screen. `w` is the starting width; dragging a header edge changes it. */
+const COLS = [
+  { key: 'h',     label: 'H',            cls: 'c-helix', w: 46,  title: 'Helix (0-19). Click to sort; the default order walks the helices in sequence.' },
+  { key: 'p',     label: 'P',            cls: 'c-pos num', w: 46, title: 'Position of the gene inside its helix' },
+  { key: 'n',     label: 'Gene name',    cls: 'name',    w: 190, title: 'Click a name to copy its direct link' },
+  { key: 'm',     label: 'm',            cls: 'num',     w: 56,  title: 'Dominance: the weight of the dominant base (n[0]) in the blend' },
+  { key: 's',     label: 's',            cls: 'num',     w: 56,  title: 'Scale/divisor of the gene value' },
+  { key: 'g0',    label: 'g0',           cls: 'num',     w: 96,  title: 'The MOST DOMINANT base of n and the value it gives (already divided by s). Click the cell for the 4x4 matrix.' },
+  { key: 'g1',    label: 'g1',           cls: 'num',     w: 96,  title: 'The second base of n and the value it gives (already divided by s). Click the cell for the 4x4 matrix.' },
+  { key: 'g2',    label: 'g2',           cls: 'num',     w: 96,  title: 'The third base of n and the value it gives (already divided by s). Click the cell for the 4x4 matrix.' },
+  { key: 'g3',    label: 'g3',           cls: 'num',     w: 96,  title: 'The LEAST DOMINANT (most recessive) base of n and the value it gives (already divided by s). Click the cell for the 4x4 matrix.' },
+  { key: 'd',     label: 'Description',  cls: 'desc',    w: 460, title: 'What the gene does and which genes gate or override it' }
+];
+
+/* ---------------------------------------------------------------------
+   VALUE ANNOTATIONS
+   Some genes are discrete: the blended number is an index or a switch, not a size. `g.a` carries
+   what the visual editor (apps/visual/editor-specs.js) and SIMPR call each of those values:
+     a.l = { gene value: what it means }   and a.c = the swatch for the colour genes
+     a.t = the caveat SIMPR shows with the gene (needs another gene, gets overridden, ...)
+   The superscript dot next to a gene name marks a gene that has either.
+   --------------------------------------------------------------------- */
+const hasAnn = g => !!(g.a && (g.a.l || g.a.t));
+/* With the value names on, the letter that marks a gene as discrete gives way to the name itself. */
+document.body.classList.add('ann-show');
+
+/* A few genes carry an effect that comes from carrying one particular base rather than from the
+   blended value (OSTO_SIZE's rounded spikes want G, CHEST_SMALL's sloped chest wants A). The
+   annotation builder puts that in `a.sep`: `cells` maps a gene value to { column: effect } for the
+   base's own g cell, `axis` maps a column to the marker shown on the 4x4 grid's row and column, and
+   `matrix` is the word a 4x4 cell uses when the pair contains that base. */
+function alleleEffect(g, allele) {
+  const sep = g.a && g.a.sep;
+  if (!sep || !sep.cells) return null;
+  const at = sep.cells[gvOf(g, allele)];
+  return at ? at[allele] || null : null;
+}
+function axisEffect(g, allele) {
+  const sep = g.a && g.a.sep;
+  return sep && sep.axis ? sep.axis[allele] || null : null;
+}
+function matrixEffectFor(g, alleleA, alleleB) {
+  const sep = g.a && g.a.sep;
+  if (!sep) return null;
+  return (alleleEffect(g, alleleA) || alleleEffect(g, alleleB)) ? sep.matrix : null;
+}
+
+/* ---------------------------------------------------------------------
+   COLOUR GRIDS
+   Two places in the game combine two genes into one colour, and the value on its own says nothing:
+     SKIN  = a flat 16-entry table indexed by SKIN_HUE2 x 4 + SKIN_HUE (lib/renderer/colors.js), so
+             the 4x4 grid below IS the whole skin colour space.
+     COAT  = baseColours(red, green, brown): BASE_GREEN and BASE_RED pick the branch and BASE_BROWN
+             is the third key, so the coat base colour is a 4x4x4 space, shown here as one 4x4 grid
+             per BASE_BROWN value.
+   Both tables are the literals from the decoder, read out of lib/renderer/colors.js.
+   --------------------------------------------------------------------- */
+const PALETTE = ['#110b03', '#8a8a8a', '#adafb3', '#c3c6c9', '#eeeeee', '#ffffff', '#d6922c', '#7a3f00',
+                 '#d6a660', '#d6cbbc', '#47310f', '#8f3636', '#632626', '#c93c59', '#ffaf40', '#e83a57',
+                 '#db7830', '#d8db30', '#a2db30', '#36e345', '#30dbbe', '#30a2db', '#4661e8', '#2200b9',
+                 '#7542db', '#2c1852', '#c142db', '#db30a2', '#f0e3a1', '#1c570b', '#ffa799', '#ffc768',
+                 '#fdff7d', '#b1ff7d', '#7dff88', '#26ad97', '#95c9bc', '#82d7ff', '#d67c6d', '#b0a207'];
+const PAL = i => PALETTE[i];
+/* SKIN_TABLE, palette index per (SKIN_HUE2 x 4 + SKIN_HUE) */
+const SKIN_TABLE = [30, 9, 8, 31, 38, 1, 17, 14, 11, 10, 39, 7, 25, 36, 5, 37];
+/* baseColours(red, green, brown) -> the three coat colours; the sentinel fixup is already applied */
+function baseColours(red, green, brown) {
+  const S = '@';
+  const c = { dark: PAL(6), mid: S, base: S, spot: PAL(9) };
+  if (green === 1) {
+    if (red === 0 || red === 1) { c.dark = PAL(39); c.mid = PAL(17); c.base = PAL(32); }
+    else if (red === 2) { c.spot = PAL(31); c.base = PAL(31); c.dark = PAL(16); }
+  } else if (green === 2) {
+    if (red === 0) { c.dark = PAL(19); c.spot = PAL(16); c.base = PAL(34); }
+    else if (red === 1) { c.dark = PAL(19); c.spot = PAL(17); c.base = PAL(34); }
+    else if (red === 2) { c.dark = PAL(18); c.spot = PAL(35); }
+  } else if (green === 3) {
+    c.dark = PAL(29); c.mid = PAL(19); c.base = PAL(34); c.spot = PAL(39);
+  } else {
+    if (red === 1) { c.dark = PAL(15); c.base = PAL(30); }
+    else if (red === 2) { c.dark = PAL(27); c.spot = PAL(30); c.base = PAL(26); }
+    else if (red === 3) { c.spot = PAL(30); c.base = PAL(30); c.dark = PAL(13); c.mid = PAL(38); }
+    else if (brown === 1) { c.dark = PAL(7); c.mid = PAL(6); c.base = PAL(8); }
+    else if (brown === 2) { c.dark = PAL(10); c.base = PAL(6); c.spot = PAL(8); c.mid = PAL(7); }
+    else { c.mid = PAL(8); c.base = PAL(9); }
+  }
+  if (c.mid === S) c.mid = c.dark;
+  if (c.base === S) c.base = c.mid;
+  return c;
+}
+const mod4 = n => ((n % 4) + 4) % 4;
+
+/* What the three swatches of a coat cell are, in the order they are drawn. */
+const coatKeyHtml = () =>
+  `<p class="grid-key">Each cell: <span class="ctrio">` +
+  `<span class="csw"><i>l</i><b style="background:#8a8a8a"></b></span>` +
+  `<span class="csw"><i>b</i><b style="background:#8a8a8a"></b></span>` +
+  `<span class="csw"><i>s</i><b style="background:#8a8a8a"></b></span>` +
+  `</span> = <b>l</b>ight, <b>b</b>ase and <b>s</b>pot colour. Hover a cell for the three shades.</p>`;
+
+/* A grid of colour swatches: rows x cols, each cell built by cellHtml(value, r, c).
+   `marked(r, c)` outlines the cell the gene's own values can produce. */
+function colourGrid(title, rowLabel, colLabel, rowVals, colVals, cellHtml, marked) {
+  let html = `<h3>${title}</h3><table class="cgrid"><tr><th class="corner">${rowLabel} &darr;<br>${colLabel} &rarr;</th>`;
+  for (const c of colVals) html += `<th>${c}</th>`;
+  html += '</tr>';
+  rowVals.forEach((rv, r) => {
+    html += `<tr><th>${rv}</th>`;
+    colVals.forEach((cv, c) => {
+      html += `<td class="${marked(rv, cv) ? 'hit' : ''}">${cellHtml(rv, cv)}</td>`;
+    });
+    html += '</tr>';
+  });
+  return html + '</table>';
+}
+
+const swatch = (hex, label, extra) =>
+  `<span class="csw" style="background:${hex}"></span>` +
+  `<span class="clab">${label}${extra ? `<i>${extra}</i>` : ''}</span>`;
+
+/* The skin grid: the 16 colours of the flat table, as SKIN_HUE2 across and SKIN_HUE down. */
+function skinGridHtml(gene) {
+  const a = [0, 1, 2, 3];
+  /* the distinct values this gene's four bases give; those are the cells it can reach */
+  const reach = new Set([0, 1, 2, 3].map(k => +gvOf(gene, k)));
+  return colourGrid(
+    'The 16 skin colours: SKIN_HUE2 across, SKIN_HUE down',
+    'SKIN_HUE2', 'SKIN_HUE',
+    a, a,
+    (h2, h) => swatch(PAL(SKIN_TABLE[h2 * 4 + h]), `hue ${h}, hue2 ${h2}`, PAL(SKIN_TABLE[h2 * 4 + h])),
+    (h2, h) => (gene.n === 'SKIN_HUE' ? reach.has(h) : reach.has(h2))
+  );
+}
+
+/* The coat: two grids, because BASE_BROWN only matters while BASE_GREEN is 0 (colors.js:112-128,
+   every green branch decides on its own and ignores brown). The BASE_BROWN table therefore holds
+   red and green at 0, and the RED/GREEN table holds brown at its default.
+   Each cell is the three colours the coat chooses between, in the order BASE_CREAM walks them
+   (colors.js:158-162): the lighter step, the base, the spot. The letters under the swatches say
+   which is which, and the cell's tooltip spells the three out. */
+const COAT_TRIO = col =>
+  `<span class="ctrio" title="light ${col.mid}  |  base ${col.base}  |  spot ${col.spot}">` +
+  `<span class="csw"><i>l</i><b style="background:${col.mid}"></b></span>` +
+  `<span class="csw"><i>b</i><b style="background:${col.base}"></b></span>` +
+  `<span class="csw"><i>s</i><b style="background:${col.spot}"></b></span>` +
+  `</span>`;
+
+function baseBrownGridHtml(gene) {
+  const a = [0, 1, 2, 3];
+  const reach = new Set(a.map(k => mod4(+gvOf(gene, k))));
+  return colourGrid(
+    'Coat colours for BASE_BROWN, with BASE_RED and BASE_GREEN at 0',
+    'BASE_GREEN', 'BASE_BROWN',
+    a, a,
+    (green, brown) => COAT_TRIO(baseColours(0, green, brown)),
+    (green, brown) => gene.n === 'BASE_BROWN' ? reach.has(brown) : true
+  );
+}
+
+function baseRedGreenGridHtml(gene) {
+  const a = [0, 1, 2, 3];
+  const reach = new Set(a.map(k => mod4(+gvOf(gene, k))));
+  return colourGrid(
+    'Coat colours for BASE_GREEN and BASE_RED, with BASE_BROWN at 0',
+    'BASE_RED', 'BASE_GREEN',
+    a, a,
+    (red, green) => (red === 0 && green === 0)
+      ? `<span class="clab cempty">see the<br>BASE_BROWN table</span>`
+      : COAT_TRIO(baseColours(red, green, 0)),
+    (red, green) => gene.n === 'BASE_RED' ? reach.has(red)
+      : gene.n === 'BASE_GREEN' ? reach.has(green) : true
+  );
+}
+function gvOf(g, allele) { return g.g[allele] / (g.s || 1); }
+
+/* A number for display: integers plain, fractions at most 3 decimals with no trailing zeros. */
+function num(v) {
+  const r = Math.round(v * 1000) / 1000;
+  return Number.isInteger(r) ? String(r) : String(r);
+}
+const fmtNum = v => Number(num(v)).toLocaleString('en-US', { maximumFractionDigits: 3 });
+
+/* A value from the 4x4 blend, scaled the same way. */
+function mvOf(g, value) { return value / (g.s || 1); }
+
+const fmtRaw = v => Number(v).toLocaleString('en-US');
+
+function escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* One g column: the base it belongs to, the value that base gives (already divided by s), the raw
+   column value, and (with Values on) what that number means for a discrete gene. Clicking the cell
+   opens the gene's 4x4 matrix with this base's row and column marked. */
+function gCellHtml(g, allele) {
+  const base = g.o[allele];
+  const v = gvOf(g, allele);
+  const key = num(v);
+  const lab = g.a && g.a.l ? g.a.l[key] : null;
+  const swatch = lab && g.a.c && g.a.c[key];
+  const chip = (lab && annotationsOn)
+    ? `<span class="g-lab">${swatch ? `<i class="sw" style="background:${escAttr(swatch)}"></i>` : ''}${escapeHtml(lab)}</span>` : '';
+  const eff = alleleEffect(g, allele);
+  const effChip = eff ? `<span class="g-lab g-eff">${escapeHtml(eff)}</span>` : '';
+  return `<td class="num g-cell" data-gene="${g.i}" data-allele="${allele}">` +
+    `<span class="g-top"><span class="g-base b-${base}">${base}</span><span class="g-val">${fmtNum(v)}</span></span>` +
+    chip + effChip + `</td>`;
+}
+
+/* ------------------------------ helpers ------------------------------ */
+const fmt = n => Number(n).toLocaleString('en-US');
+
+function valueOf(gene, key) {
+  if (key === 'hp' || key === 'index') return gene.h * 1000 + gene.p;
+  if (key === 'h') return gene.h;
+  if (key === 'p') return gene.p;
+  if (key === 'n' || key === 'd' || key === 'o') return gene[key].toLowerCase();
+  if (key === 'm') return gene.m;
+  if (key === 's') return gene.s;
+  if (key[0] === 'g') return gvOf(gene, +key[1]);      /* sort by the value the game uses */
+  return gene.i;
+}
+
+function visibleGenes() {
+  const q = query.trim().toLowerCase();
+  const words = q ? q.split(/\s+/) : [];
+  let list = DATA.genes;
+  if (words.length) {
+    list = list.filter(g => {
+      /* the base order of a gene is searchable too ("ATGC") */
+      const hay = (g.n + ' ' + g.d + ' ' + g.h + ':' + g.p + ' ' + g.o).toLowerCase();
+      return words.every(w => hay.includes(w));
+    });
+  }
+  const dir = sortDir;
+  return list.slice().sort((a, b) => {
+    const va = valueOf(a, sortKey), vb = valueOf(b, sortKey);
+    let c;
+    if (typeof va === 'string') c = va < vb ? -1 : va > vb ? 1 : 0;
+    else c = va === vb ? 0 : (va < vb ? -1 : 1);
+    /* Equal helix: walk the positions, so a helix always reads P0, P1, P2... */
+    if (c === 0 && sortKey === 'h') c = a.p - b.p;
+    return c === 0 ? a.i - b.i : c * dir;
+  });
+}
+
+/* ------------------------------- render ------------------------------ */
+function renderHead() {
+  const total = COLS.reduce((sum, c) => sum + (colWidth[c.key] || c.w), 0);
+  const table = document.getElementById('geneTable');
+  table.style.width = `max(100%, ${total}px)`;
+  /* A real colgroup keeps header and value the same width, including after a drag. */
+  document.getElementById('colGroup').innerHTML = COLS.map(c => {
+    const w = colWidth[c.key] || c.w;
+    return `<col data-key="${c.key}" style="width:${w}px">`;
+  }).join('');
+  /* the second sticky column starts where the first one ends */
+  document.documentElement.style.setProperty('--helix-w', (colWidth.h || 46) + 'px');
+
+  document.getElementById('headRow').innerHTML = COLS.map(c => {
+    const active = sortKey === c.key;
+    const arrow = active ? `<span class="arrow">${sortDir > 0 ? '\u25B2' : '\u25BC'}</span>` : '';
+    /* every header is right-aligned over its numbers, so header and value line up */
+    return `<th class="sortable ${c.cls}" data-key="${c.key}">` +
+      `<span class="th-label">${c.label}${arrow}</span><span class="col-resize"></span></th>`;
+  }).join('');
+}
+
+function renderBody() {
+  const rows = visibleGenes();
+  const parts = [];
+  /* A helix header is drawn the first time that helix appears in the sorted list, and only once:
+     the default order is by gene index, so a helix's genes are adjacent but the helix numbers are
+     not monotonic (gene 0 lives in helix 6, gene 3 in helix 0). */
+  const shownHelix = new Set();
+  const helixCount = DATA.genes.reduce((acc, g) => (acc[g.h] = (acc[g.h] || 0) + 1, acc), {});
+
+  for (const g of rows) {
+    if (!shownHelix.has(g.h)) {
+      shownHelix.add(g.h);
+      const count = helixCount[g.h];
+      parts.push(`<tr class="helix-group" id="helix-${g.h}"><td colspan="${COLS.length}">` +
+        `<span class="g-name">HELIX ${g.h}</span>` +
+        `<span class="g-count">${count} gene${count === 1 ? '' : 's'} &middot; P 0-${count - 1}</span></td></tr>`);
+    }
+    const rowClass = (g.h % 2 === 0 ? 'helix-even' : 'helix-odd');
+    /* a dot after a name means the gene carries a note, which the modal shows */
+    const mark = hasAnn(g) && g.a.t ? `<sup class="ann-mark">\u00b7</sup>` : '';
+    parts.push(
+      `<tr class="${rowClass}" id="${geneId(g)}">` +
+`<td class="c-helix">${g.h}</td>` +
+`<td class="c-pos">${g.p}</td>` +
+`<td class="name"><a href="${hashFor(g)}" data-gene="${g.i}">${g.n}</a>${mark}</td>` +
+`<td class="m num"><button data-gene="${g.i}">${g.m}</button></td>` +
+`<td class="num">${g.s}</td>` +
+g.g.map((v, a) => gCellHtml(g, a)).join('') +
+`<td class="desc">${g.d}</td>` +
+`</tr>`);
+  }
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = parts.length ? parts.join('') : '';
+  document.getElementById('count').innerHTML =
+    `<b>${rows.length}</b> of ${DATA.genes.length} genes` + (query ? ` matching "${escapeHtml(query)}"` : '');
+  document.getElementById('clearSearch').style.display = query ? 'block' : 'none';
+  if (!parts.length) {
+    tbody.innerHTML = `<tr><td colspan="${COLS.length}" class="no-results">No gene matches "${escapeHtml(query)}".</td></tr>`;
+  }
+  flashTarget();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* A gene's link and row id is its own name: #SIZE, #TAIL_SHAPE. The name is URL-safe as it stands
+   (capital letters and underscores), so the address bar reads plainly. */
+function geneId(g) { return g.n; }
+const byName = new Map(DATA.genes.map(g => [g.n.toLowerCase(), g]));
+function geneFromHash(hash) {
+  const raw = decodeURIComponent(String(hash || '').replace(/^#/, '')).trim();
+  return raw ? byName.get(raw.toLowerCase()) || null : null;
+}
+function hashFor(g) { return '#' + geneId(g); }
+function clearHash() {
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
+function flashTarget() {
+  const g = geneFromHash(location.hash);
+  if (!g) return;
+  const tr = document.getElementById(geneId(g));
+  if (!tr) return;
+  tr.scrollIntoView({ block: 'center' });
+  tr.classList.add('flash');
+  setTimeout(() => tr.classList.remove('flash'), 1800);
+}
+
+/* ---------------------------- matrix modal --------------------------- */
+let modalGene = null;
+
+function hexToRgb(h) {
+  return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+}
+/* Background for a cell: zero is flat grey, positives ramp to blue and negatives to red, each
+   against the gene's own smallest and largest magnitude so every gene reads at a glance. The colour
+   stays on the cell so it cannot tint the number drawn over it. */
+function cellStyle(v, min, max) {
+  if (v === 0) return 'background:#2a3644';
+  const neg = v < 0;
+  const span = neg ? Math.abs(Math.min(0, min)) : Math.max(0, max);
+  const t = span === 0 ? 0.6 : Math.min(1, Math.abs(v) / span);
+  const base = neg ? [90, 40, 32] : [26, 44, 66];
+  const peak = neg ? [214, 78, 60] : hexToRgb('#3f8fd8');
+  const f = 0.15 + 0.85 * t;
+  const out = base.map((c, i) => Math.round(c + (peak[i] - c) * f));
+  return `background:rgb(${out[0]},${out[1]},${out[2]})`;
+}
+
+/* One axis label of the 4x4 grid: the base, and the effect that base brings where there is one. */
+function matrixAxisHtml(g, bases, base) {
+  const eff = axisEffect(g, bases.indexOf(base));
+  return `<th class="aa-${base}">${base}${eff ? `<i class="eff">${escapeHtml(eff)}</i>` : ''}</th>`;
+}
+
+function openMatrix(i, push, markAllele) {
+  const g = DATA.genes[i];
+  if (!g) return;
+  modalGene = g;
+  const bases = g.o.split('');
+  /* The display value is the blend divided by s, like the table: SIZE 100 is 1.0. */
+  const scaled = MAT[g.x].map(v => mvOf(g, v));
+  const min = Math.min.apply(null, scaled), max = Math.max.apply(null, scaled);
+
+  document.getElementById('modalTitle').textContent = g.n;
+  document.getElementById('modalMeta').innerHTML =
+    `H:P <b>${g.h}:${g.p}</b> &middot; gene <b>#${g.i}</b> &middot; dominance m <b>${g.m}</b> &middot; scale s <b>${g.s}</b>` +
+    ` &middot; n <b>${g.o}</b> (first = most dominant) &middot; raw g <b>${g.g.join(' / ')}</b>` +
+    (g.s === 1 ? '' : ` &middot; values shown as <b>g / s</b> (raw / ${g.s})`);
+  document.getElementById('modalDesc').textContent = g.d;
+
+  /* What the values mean: the discrete names for this gene, then the caveat that comes with it. */
+  const ann = g.a;
+  const labels = ann && ann.l ? ann.l : null;
+  let annHtml = '';
+  if (labels) {
+    annHtml += `<h3>${ann.c ? 'The colour each value gives' : 'What the value means'}</h3><div class="m-strip">` +
+      Object.keys(labels).map(k => {
+        const sw = ann.c && ann.c[k] ? `<i class="sw" style="background:${escAttr(ann.c[k])}"></i>` : '';
+        const on = scaled.some(v => num(v) === k);
+        /* A colour gene's name for a value IS the colour, so the swatch and the number say it all:
+           printing the name too just repeats the number (SKIN_HUE's names are "0", "1", "2", "3"). */
+        const name = ann.c ? '' : ` ${escapeHtml(labels[k])}`;
+        return `<span class="chip${on ? ' on' : ''}"${name ? '' : ` title="${escAttr(labels[k])}"`}>${sw}<b>${escapeHtml(k)}</b>${name}</span>`;
+      }).join('') + '</div>';
+  }
+  if (ann && ann.t) annHtml += `<p class="ann-note"><b>Note:</b> ${escapeHtml(ann.t)}</p>`;
+  document.getElementById('modalAnn').innerHTML = annHtml;
+
+  /* The genes whose meaning is a colour decided together with another gene get the whole grid. */
+  const gridHost = document.getElementById('gridHost');
+  if (g.n === 'SKIN_HUE' || g.n === 'SKIN_HUE2') {
+    gridHost.innerHTML = skinGridHtml(g) +
+      `<p class="grid-note">SKIN_HUE and SKIN_HUE2 are the two halves of one number: the colour is read from a flat table of 16 at <code>SKIN_HUE2 x 4 + SKIN_HUE</code>, so the value of either gene on its own is only half the answer. The outlined cells are the ones this gene's own values reach (a heterozygote can also let the game take the higher of the two strands instead of the lower, which is why two genes matter and not one).</p>`;
+  } else if (g.n === 'BASE_BROWN') {
+    gridHost.innerHTML = baseBrownGridHtml(g) +
+      coatKeyHtml() +
+      `<p class="grid-note">BASE_BROWN only changes the coat while BASE_GREEN is 0: every green branch of the colour code decides on its own and never looks at brown (colors.js:112-128). This table is therefore brown against green with BASE_RED at 0, and each cell is the three coat colours BASE_CREAM then chooses between.</p>`;
+  } else if (g.n === 'BASE_RED' || g.n === 'BASE_GREEN') {
+    gridHost.innerHTML = baseRedGreenGridHtml(g) +
+      coatKeyHtml() +
+      `<p class="grid-note">BASE_GREEN and BASE_RED pick the coat between them, with BASE_CREAM choosing which of the three colours in a cell is used. The corner where both are 0 is the brown side of the code, so it is left empty and shown in the BASE_BROWN table instead. To see brown's own effect, open BASE_BROWN.</p>`;
+  } else {
+    gridHost.innerHTML = '';
+  }
+
+  /* A cell shows the name of its value, and the effect the base itself brings where one applies. */
+  const labelFor = v => (labels && labels[num(v)] ? labels[num(v)] : null);
+  let html = '<table class="matrix"><tr><th class="corner"></th>';
+  for (const b of bases) html += matrixAxisHtml(g, bases, b);
+  html += '</tr>';
+  for (let a = 0; a < 4; a++) {
+    html += '<tr>' + matrixAxisHtml(g, bases, bases[a]);
+    for (let b = 0; b < 4; b++) {
+      const v = scaled[a * 4 + b];
+      const lab = labelFor(v);
+      /* an effect that comes from carrying the base, in either strand, anywhere in the pair */
+      const eff = matrixEffectFor(g, a, b);
+      /* the base pair the user clicked in the table, so the modal opens where they were */
+      const hit = markAllele !== undefined && (a === markAllele || b === markAllele);
+      const small = (lab || eff)
+        ? `<small>${lab ? `<b>${escapeHtml(lab)}</b>` : ''}${lab && eff ? ' ' : ''}${eff ? `<i class="eff">${escapeHtml(eff)}</i>` : ''}</small>`
+        : '';
+      html += `<td class="${a === b ? 'diag' : ''}${hit ? ' hit' : ''}" style="${cellStyle(v, min, max)}">` +
+        `<span class="mnum">${fmtNum(v)}</span>${small}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  document.getElementById('matrixHost').innerHTML = html;
+
+  /* no legend under the matrix: the axes are labelled on the table itself */
+  document.getElementById('matrixNote').innerHTML = '';
+
+  document.getElementById('modalBg').classList.add('open');
+  document.getElementById('copyLink').textContent = 'Copy link';
+  if (push) history.replaceState(null, '', hashFor(g));
+}
+
+function closeMatrix() {
+  document.getElementById('modalBg').classList.remove('open');
+  modalGene = null;
+  clearHash();          /* closing the gene leaves a clean address bar */
+}
+
+/* ------------------------------ events ------------------------------- */
+/* Which direction a column sorts in when it is picked for the first time. Text reads
+   best A->Z, but sizes, dominance and gene values are far more useful biggest-first. */
+const FIRST_DIR = { index: 1, h: 1, p: 1, n: 1, d: 1, o: 1, m: -1, s: -1, g0: -1, g1: -1, g2: -1, g3: -1 };
+
+document.getElementById('headRow').addEventListener('click', e => {
+  if (e.target.closest('.col-resize')) return;      /* that edge drags, it does not sort */
+  const th = e.target.closest('th.sortable');
+  if (!th) return;
+  const key = th.dataset.key;
+  if (sortKey === key) sortDir = -sortDir;
+  else { sortKey = key; sortDir = FIRST_DIR[key] || 1; }
+  renderHead(); renderBody();
+  window.scrollTo({ top: 0 });
+});
+
+/* Drag a header edge to widen or narrow that column (double-click the edge to fit the header).
+   Widths are kept per column, in CSS px, and remembered in localStorage. */
+(function columnResizer() {
+  const MIN = 34;
+  const headRow = document.getElementById('headRow');
+  const table = document.getElementById('geneTable');
+  let key = null, startX = 0, startW = 0;
+
+  const widthOf = k => {
+    const col = document.querySelector(`colgroup col[data-key="${k}"]`);
+    if (col) return col.getBoundingClientRect().width;
+    return (colWidth[k] || (COLS.find(c => c.key === k) || {}).w || 80);
+  };
+
+  const onMove = e => {
+    if (!key) return;
+    /* keep the table from squeezing below the sum of the widths */
+    const w = Math.max(MIN, Math.round(startW + (e.clientX - startX)));
+    colWidth[key] = w;
+    const col = document.querySelector(`colgroup col[data-key="${key}"]`);
+    if (col) col.style.width = w + 'px';
+    const total = COLS.reduce((sum, c) => sum + (colWidth[c.key] || c.w), 0);
+    table.style.width = `max(100%, ${total}px)`;
+    e.preventDefault();
+  };
+  const onUp = () => {
+    if (!key) return;
+    key = null;
+    document.body.classList.remove('col-resizing');
+    document.querySelectorAll('.col-resize.active').forEach(el => el.classList.remove('active'));
+    saveColWidths();
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  };
+
+  headRow.addEventListener('mousedown', e => {
+    const grip = e.target.closest('.col-resize');
+    if (!grip) return;
+    const th = grip.closest('th');
+    key = th.dataset.key;
+    startX = e.clientX;
+    startW = widthOf(key);
+    grip.classList.add('active');
+    document.body.classList.add('col-resizing');
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  headRow.addEventListener('dblclick', e => {
+    const grip = e.target.closest('.col-resize');
+    if (!grip) return;
+    const k = grip.closest('th').dataset.key;
+    /* fit the widest cell in that column, within reason */
+    delete colWidth[k];
+    renderHead(); renderBody();
+    saveColWidths();
+  });
+}());
+
+document.getElementById('tbody').addEventListener('click', e => {
+  const cell = e.target.closest('td.g-cell');
+  if (cell) { openMatrix(+cell.dataset.gene, true, +cell.dataset.allele); return; }
+  const btn = e.target.closest('button[data-gene]');
+  if (btn) { openMatrix(+btn.dataset.gene, true); return; }
+  const link = e.target.closest('a[data-gene]');
+  if (link) {
+    const i = +link.dataset.gene;
+    /* left-click: select + copy the direct link, keep the page where it is */
+    e.preventDefault();
+    openMatrix(i, true);
+    copyText(location.href);
+    document.getElementById('copyLink').textContent = 'Copied!';
+    return;
+  }
+  const hg = e.target.closest('td.c-helix');
+  if (hg) {
+    const h = hg.textContent.trim();
+    const row = document.getElementById('g-' + DATA.genes.find(g => String(g.h) === h).i);
+    if (row) { row.scrollIntoView({ block: 'center' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1500); }
+  }
+});
+
+function copyText(t) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).catch(() => fallbackCopy(t));
+  } else fallbackCopy(t);
+}
+function fallbackCopy(t) {
+  const ta = document.createElement('textarea');
+  ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+const search = document.getElementById('search');
+let debounce = null;
+search.addEventListener('input', () => {
+  clearTimeout(debounce);
+  debounce = setTimeout(() => { query = search.value; renderBody(); }, 90);
+});
+search.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { search.value = ''; query = ''; renderBody(); }
+  if (e.key === 'Enter') {
+    const first = document.querySelector('#tbody tr[data-i]');
+    if (first) { first.scrollIntoView({ block: 'center' }); first.classList.add('flash'); setTimeout(() => first.classList.remove('flash'), 1500); }
+  }
+});
+document.getElementById('clearSearch').addEventListener('click', () => {
+  search.value = ''; query = ''; renderBody(); search.focus();
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+  search.value = ''; query = ''; sortKey = 'h'; sortDir = 1;
+  colWidth = {}; saveColWidths();       /* column widths back to their defaults too */
+  clearHash();                          /* and no gene left linked in the address bar */
+  renderHead(); renderBody();
+});
+
+document.getElementById('closeModal').addEventListener('click', closeMatrix);
+document.getElementById('modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg') closeMatrix(); });
+document.getElementById('copyLink').addEventListener('click', () => {
+  if (!modalGene) return;
+  copyText(location.origin + location.pathname + location.search + hashFor(modalGene));
+  document.getElementById('copyLink').textContent = 'Copied!';
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('modalBg').classList.contains('open')) closeMatrix();
+  }
+  if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); }
+});
+
+/* ------------------------------- start ------------------------------- */
+renderHead();
+renderBody();
+/* An incoming #GENE_NAME link opens that gene; a link to a plain row just flashes it. */
+if (location.hash) {
+  const g = geneFromHash(location.hash);
+  if (g) openMatrix(g.i, false);
+}
+window.addEventListener('hashchange', () => {
+  const g = geneFromHash(location.hash);
+  if (g) { openMatrix(g.i, false); return; }
+  if (document.getElementById('modalBg').classList.contains('open')) closeMatrix();
+});
+</script>
+</body>
+</html>
